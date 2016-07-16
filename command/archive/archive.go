@@ -2,45 +2,45 @@ package archive
 
 import (
 	"encoding/json"
+	"github.com/bosgood/dep-get/command"
 	"github.com/bosgood/dep-get/nodejs"
 	"github.com/mitchellh/cli"
-	"github.com/ttacon/chalk"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
 )
 
-var (
-	logErrorPrefix   = chalk.Red.Color("[ERROR]")
-	logSuccessPrefix = chalk.Green.Color("[SUCCESS]")
-)
-
-type command struct{}
+type archiveCommand struct{}
 
 // NewArchiveCommand is used to generate a command object
 // which orchestrates package dependency discovery
 // and archiving to S3
 func NewArchiveCommand() (cli.Command, error) {
-	cmd := &command{}
+	cmd := &archiveCommand{}
 	return cmd, nil
 }
 
-func (c *command) Synopsis() string {
+func (c *archiveCommand) Synopsis() string {
 	return "Archives application dependencies"
 }
 
-func (c *command) Help() string {
+func (c *archiveCommand) Help() string {
 	return "I'm super helpful"
 }
 
-func (c *command) Run(args []string) int {
+func (c *archiveCommand) Run(args []string) int {
 	var dirPath string
 
 	if len(args) == 0 {
 		cwd, err := os.Getwd()
 		if err != nil {
-			log.Printf("Can't read current directory: %s", err)
+			log.Printf(
+				"%s%s: %s",
+				command.LogErrorPrefix,
+				"Can't read current directory",
+				err,
+			)
 			return 1
 		}
 		dirPath = cwd
@@ -52,8 +52,8 @@ func (c *command) Run(args []string) int {
 	packageFileContents, err := ioutil.ReadFile(packageFilePath)
 	if err != nil {
 		log.Printf(
-			"%s %s: %s",
-			logErrorPrefix,
+			"%s%s: %s",
+			command.LogErrorPrefix,
 			"Can't open the package.json file",
 			err,
 		)
@@ -64,8 +64,8 @@ func (c *command) Run(args []string) int {
 	err = json.Unmarshal(packageFileContents, &packageJSON)
 	if err != nil {
 		log.Printf(
-			"%s %s: %s",
-			logErrorPrefix,
+			"%s%s: %s",
+			command.LogErrorPrefix,
 			"Failed to decode the package.json file",
 			err,
 		)
@@ -73,8 +73,8 @@ func (c *command) Run(args []string) int {
 	}
 
 	log.Printf(
-		"%s %s: %s",
-		logSuccessPrefix,
+		"%s%s: %s",
+		command.LogSuccessPrefix,
 		"Read package.json",
 		packageJSON,
 	)
