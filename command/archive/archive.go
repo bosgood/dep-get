@@ -69,6 +69,7 @@ func (c *command) Run(args []string) int {
 			"Failed to decode the package.json file",
 			err,
 		)
+		return 1
 	}
 
 	log.Printf(
