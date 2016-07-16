@@ -3,3 +3,4 @@ import:
 - package: github.com/ttacon/chalk
   version: ^0.1.0
 - package: github.com/mitchellh/cli
+  version: 168daae
