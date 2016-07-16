@@ -1,11 +1,9 @@
 package main
 
 import (
-	"github.com/mitchellh/cli"
 	"log"
 	"os"
-
-	// "github.com/bosgood/dep-get/command"
+	"github.com/mitchellh/cli"
 	"github.com/bosgood/dep-get/command/archive"
 )
 
