@@ -24,3 +24,33 @@ type NPMShrinkwrapDependency struct {
 	Resolved     string                              `json:"resolved"`
 	Dependencies map[string]*NPMShrinkwrapDependency `json:"dependencies"`
 }
+
+// NodeDependency declares a node dependency and a way to download it
+type NodeDependency struct {
+	Name       string
+	Version    string
+	PackageURL string
+}
+
+func collectDependencies(
+	memo []NodeDependency,
+	deps map[string]*NPMShrinkwrapDependency,
+) []NodeDependency {
+	for k, v := range deps {
+		memo = append(memo, NodeDependency{
+			Name:       k,
+			Version:    v.Version,
+			PackageURL: v.Resolved,
+		})
+		memo = collectDependencies(memo, v.Dependencies)
+	}
+	return memo
+}
+
+// CollectDependencies flattens all given node dependencies
+// into one map of "depname" -> { version, packageUrl }
+func CollectDependencies(npmShrinkwrap NPMShrinkwrap) []NodeDependency {
+	var deps []NodeDependency
+	deps = collectDependencies(deps, npmShrinkwrap.Dependencies)
+	return deps
+}
