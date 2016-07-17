@@ -1,5 +1,9 @@
 package nodejs
 
+import (
+	"fmt"
+)
+
 // DependenciesFileName is the name of the nodejs dependencies lock file
 const DependenciesFileName = "npm-shrinkwrap.json"
 
@@ -52,5 +56,16 @@ func collectDependencies(
 func CollectDependencies(npmShrinkwrap NPMShrinkwrap) []NodeDependency {
 	var deps []NodeDependency
 	deps = collectDependencies(deps, npmShrinkwrap.Dependencies)
-	return deps
+
+	var dedupedDeps []NodeDependency
+	var depSet = make(map[string]bool)
+	for _, dep := range deps {
+		depStr := fmt.Sprintf("%s@%s", dep.Name, dep.Version)
+		if dupeDep := depSet[depStr]; !dupeDep {
+			dedupedDeps = append(dedupedDeps, dep)
+			depSet[depStr] = true
+		}
+	}
+
+	return dedupedDeps
 }
