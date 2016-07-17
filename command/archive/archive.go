@@ -2,19 +2,19 @@ package archive
 
 import (
 	"encoding/json"
-	"github.com/bosgood/dep-get/command"
-	"github.com/bosgood/dep-get/nodejs"
-	"github.com/bosgood/dep-get/lib/fs"
-	"github.com/mitchellh/cli"
 	"fmt"
+	"github.com/bosgood/dep-get/command"
+	"github.com/bosgood/dep-get/lib/fs"
+	"github.com/bosgood/dep-get/nodejs"
+	"github.com/mitchellh/cli"
 	"path"
 )
 
-var realOS fs.FileSystem = fs.OSFS{}
+var realOS fs.FileSystem = &fs.OSFS{}
 
 type archiveCommand struct {
 	npmShrinkwrap nodejs.NPMShrinkwrap
-	os fs.FileSystem
+	os            fs.FileSystem
 }
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {

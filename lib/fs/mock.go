@@ -17,21 +17,21 @@ type MockFS struct {
 }
 
 // Open opens a file
-func (m MockFS) Open(name string) (File, error) {
+func (m *MockFS) Open(name string) (File, error) {
 	return m.OpenResult, m.OpenError
 }
 
 // Stat stats a file
-func (m MockFS) Stat(name string) (os.FileInfo, error) {
+func (m *MockFS) Stat(name string) (os.FileInfo, error) {
 	return m.StatResult, m.StatError
 }
 
 // Getwd gets a wd
-func (m MockFS) Getwd() (string, error) {
+func (m *MockFS) Getwd() (string, error) {
 	return m.GetwdResult, m.GetwdError
 }
 
 // ReadFile reads a file
-func (m MockFS) ReadFile(filename string) ([]byte, error) {
+func (m *MockFS) ReadFile(filename string) ([]byte, error) {
 	return m.ReadFileResult, m.ReadFileError
 }
