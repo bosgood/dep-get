@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"github.com/bosgood/dep-get/command"
 	"github.com/bosgood/dep-get/nodejs"
+	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/mitchellh/cli"
 	"io/ioutil"
 	"log"
-	"os"
 	"path"
 )
+
+var os fs.FileSystem = fs.OSFS{}
 
 type archiveCommand struct{}
 
