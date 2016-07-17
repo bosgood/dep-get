@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"io/ioutil"
 	"os"
 )
 
@@ -20,4 +21,9 @@ func (OSFS) Stat(name string) (os.FileInfo, error) {
 // Getwd gets a wd
 func (OSFS) Getwd() (string, error) {
 	return os.Getwd()
+}
+
+// ReadFile reads a file
+func (OSFS) ReadFile(filename string) ([]byte, error) {
+	return ioutil.ReadFile(filename)
 }

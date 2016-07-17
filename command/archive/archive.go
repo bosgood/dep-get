@@ -6,21 +6,29 @@ import (
 	"github.com/bosgood/dep-get/nodejs"
 	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/mitchellh/cli"
-	"io/ioutil"
 	"log"
 	"path"
 )
 
-var os fs.FileSystem = fs.OSFS{}
+var realOS fs.FileSystem = fs.OSFS{}
 
-type archiveCommand struct{}
+type archiveCommand struct {
+	packageJSON nodejs.PackageJSON
+	os fs.FileSystem
+}
+
+func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
+	cmd := &archiveCommand{
+		os: os,
+	}
+	return cmd, nil
+}
 
 // NewArchiveCommand is used to generate a command object
 // which orchestrates package dependency discovery
 // and archiving to S3
 func NewArchiveCommand() (cli.Command, error) {
-	cmd := &archiveCommand{}
-	return cmd, nil
+	return newArchiveCommandWithFS(realOS)
 }
 
 func (c *archiveCommand) Synopsis() string {
@@ -35,7 +43,7 @@ func (c *archiveCommand) Run(args []string) int {
 	var dirPath string
 
 	if len(args) == 0 {
-		cwd, err := os.Getwd()
+		cwd, err := c.os.Getwd()
 		if err != nil {
 			log.Printf(
 				"%s%s: %s",
@@ -47,11 +55,16 @@ func (c *archiveCommand) Run(args []string) int {
 		}
 		dirPath = cwd
 	} else {
+		if args[0] == "--help" {
+			log.Println(c.Help())
+			return 0
+		}
+
 		dirPath = args[0]
 	}
 
 	packageFilePath := path.Join(dirPath, "package.json")
-	packageFileContents, err := ioutil.ReadFile(packageFilePath)
+	packageFileContents, err := c.os.ReadFile(packageFilePath)
 	if err != nil {
 		log.Printf(
 			"%s%s: %s",
@@ -73,6 +86,8 @@ func (c *archiveCommand) Run(args []string) int {
 		)
 		return 1
 	}
+
+	c.packageJSON = packageJSON
 
 	log.Printf(
 		"%s%s: %s",
