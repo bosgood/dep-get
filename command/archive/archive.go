@@ -6,14 +6,14 @@ import (
 	"github.com/bosgood/dep-get/nodejs"
 	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/mitchellh/cli"
-	"log"
+	"fmt"
 	"path"
 )
 
 var realOS fs.FileSystem = fs.OSFS{}
 
 type archiveCommand struct {
-	packageJSON nodejs.PackageJSON
+	npmShrinkwrap nodejs.NPMShrinkwrap
 	os fs.FileSystem
 }
 
@@ -45,8 +45,8 @@ func (c *archiveCommand) Run(args []string) int {
 	if len(args) == 0 {
 		cwd, err := c.os.Getwd()
 		if err != nil {
-			log.Printf(
-				"%s%s: %s",
+			fmt.Printf(
+				"%s%s: %s\n",
 				command.LogErrorPrefix,
 				"Can't read current directory",
 				err,
@@ -56,45 +56,55 @@ func (c *archiveCommand) Run(args []string) int {
 		dirPath = cwd
 	} else {
 		if args[0] == "--help" {
-			log.Println(c.Help())
+			fmt.Println(c.Help())
 			return 0
 		}
 
 		dirPath = args[0]
 	}
 
-	packageFilePath := path.Join(dirPath, "package.json")
+	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
 	packageFileContents, err := c.os.ReadFile(packageFilePath)
 	if err != nil {
-		log.Printf(
-			"%s%s: %s",
+		fmt.Printf(
+			"%s%s: %s\n",
 			command.LogErrorPrefix,
-			"Can't open the package.json file",
+			"Can't open the dependencies file",
 			err,
 		)
 		return 1
 	}
 
-	var packageJSON nodejs.PackageJSON
-	err = json.Unmarshal(packageFileContents, &packageJSON)
+	var npmShrinkwrap nodejs.NPMShrinkwrap
+	err = json.Unmarshal(packageFileContents, &npmShrinkwrap)
 	if err != nil {
-		log.Printf(
-			"%s%s: %s",
+		fmt.Printf(
+			"%s%s: %s\n",
 			command.LogErrorPrefix,
-			"Failed to decode the package.json file",
+			"Failed to decode the dependencies file file",
 			err,
 		)
 		return 1
 	}
 
-	c.packageJSON = packageJSON
+	c.npmShrinkwrap = npmShrinkwrap
 
-	log.Printf(
-		"%s%s: %s",
+	// fmt.Printf(
+	// 	"%s%s: %s",
+	// 	command.LogSuccessPrefix,
+	// 	"Read dependencies file",
+	// 	npmShrinkwrap,
+	// )
+
+	fmt.Printf(
+		"%sFound %d top-level dependencies.\n",
 		command.LogSuccessPrefix,
-		"Read package.json",
-		packageJSON,
+		len(npmShrinkwrap.Dependencies),
 	)
+
+	for k, v := range npmShrinkwrap.Dependencies {
+		fmt.Printf("%s: %s\n", k, v.Version)
+	}
 
 	return 0
 }
