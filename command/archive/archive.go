@@ -56,8 +56,7 @@ func (c *archiveCommand) Run(args []string) int {
 		dirPath = cwd
 	} else {
 		if args[0] == "--help" {
-			fmt.Println(c.Help())
-			return 0
+			return cli.RunResultHelp
 		}
 
 		dirPath = args[0]
