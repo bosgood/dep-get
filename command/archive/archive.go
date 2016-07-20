@@ -146,7 +146,7 @@ func (c *archiveCommand) fetchDependencies(npmDeps nodejs.NPMShrinkwrap) ([]stri
 	defer resp.Body.Close()
 
 	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
-	outFile, err := c.os.Open(outFilePath)
+	outFile, err := c.os.Create(outFilePath)
 	defer func() {
 		if ferr := outFile.Close(); ferr != nil && err == nil {
 			err = ferr
@@ -222,7 +222,7 @@ func (c *archiveCommand) Run(args []string) int {
 		return 1
 	}
 
-	for d := range fetchedDeps {
+	for _, d := range fetchedDeps {
 		fmt.Printf(
 			"%s%s: %s\n",
 			command.LogInfoPrefix,

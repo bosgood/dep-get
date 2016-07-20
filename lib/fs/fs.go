@@ -8,6 +8,7 @@ import (
 // FileSystem abstracts a filesystem, real or mock
 type FileSystem interface {
 	Open(name string) (File, error)
+	Create(name string) (File, error)
 	Stat(name string) (os.FileInfo, error)
 	Getwd() (string, error)
 	ReadFile(filename string) ([]byte, error)
