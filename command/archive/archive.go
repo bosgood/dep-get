@@ -2,6 +2,7 @@ package archive
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/bosgood/dep-get/command"
 	"github.com/bosgood/dep-get/lib/fs"
@@ -15,6 +16,13 @@ var realOS fs.FileSystem = &fs.OSFS{}
 type archiveCommand struct {
 	npmShrinkwrap nodejs.NPMShrinkwrap
 	os            fs.FileSystem
+}
+
+type archiveCommandFlags struct {
+	command.BaseFlags
+	platform    string
+	source      string
+	destination string
 }
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
@@ -36,13 +44,73 @@ func (c *archiveCommand) Synopsis() string {
 }
 
 func (c *archiveCommand) Help() string {
-	return "I'm super helpful"
+	_, flagSet, _ := getConfig([]string{})
+	flagSet.PrintDefaults()
+	return ""
+}
+
+func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
+	var cmdConfig archiveCommandFlags
+
+	cmdFlags := flag.NewFlagSet("archive", flag.ExitOnError)
+	cmdFlags.BoolVar(&cmdConfig.Help, "help", false,
+		"show command help")
+	cmdFlags.StringVar(&cmdConfig.platform, "platform", "", "platform type (allowed: nodejs|python)")
+	cmdFlags.StringVar(&cmdConfig.source, "source", "", "project directory (default: .)")
+	cmdFlags.StringVar(&cmdConfig.destination, "destination", "", "dependencies download destination")
+
+	if err := cmdFlags.Parse(args); err != nil {
+		fmt.Printf(
+			"%s%s: %s\n",
+			command.LogErrorPrefix,
+			"Error parsing args",
+			err,
+		)
+		return cmdConfig, cmdFlags, 1
+	}
+
+	if cmdConfig.Help {
+		return cmdConfig, cmdFlags, cli.RunResultHelp
+	}
+
+	// All missing required arguments checks go here
+	var missingArg string
+	if cmdConfig.platform == "" {
+		missingArg = "platform"
+	} else if cmdConfig.destination == "" {
+		missingArg = "destination"
+	}
+
+	if missingArg != "" {
+		fmt.Printf(
+			"%s%s: %s\n",
+			command.LogErrorPrefix,
+			"Missing required argument",
+			missingArg,
+		)
+		return cmdConfig, cmdFlags, cli.RunResultHelp
+	}
+
+	if cmdConfig.platform != "nodejs" {
+		fmt.Printf(
+			"%s%s\n",
+			command.LogErrorPrefix,
+			"Only nodejs supported at the moment",
+		)
+		return cmdConfig, cmdFlags, 1
+	}
+
+	return cmdConfig, cmdFlags, 0
 }
 
 func (c *archiveCommand) Run(args []string) int {
-	var dirPath string
+	cmdConfig, _, ret := getConfig(args)
+	if ret != 0 {
+		return ret
+	}
 
-	if len(args) == 0 {
+	var dirPath string
+	if cmdConfig.source == "" {
 		cwd, err := c.os.Getwd()
 		if err != nil {
 			fmt.Printf(
@@ -55,11 +123,7 @@ func (c *archiveCommand) Run(args []string) int {
 		}
 		dirPath = cwd
 	} else {
-		if args[0] == "--help" {
-			return cli.RunResultHelp
-		}
-
-		dirPath = args[0]
+		dirPath = cmdConfig.source
 	}
 
 	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
