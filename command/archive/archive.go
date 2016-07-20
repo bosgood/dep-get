@@ -140,10 +140,14 @@ func (c *archiveCommand) fetchDependencies(npmDeps nodejs.NPMShrinkwrap) ([]stri
 	dep := deps[0]
 
 	resp, err := http.Get(dep.PackageURL)
+	defer func() {
+	    if rerr := resp.Body.Close(); rerr != nil && err == nil {
+	        err = rerr
+	    }
+	}()
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
 	outFile, err := c.os.Create(outFilePath)
