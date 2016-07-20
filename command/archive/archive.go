@@ -103,6 +103,35 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
 	return cmdConfig, cmdFlags, 0
 }
 
+func (c *archiveCommand) getDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
+	var npmShrinkwrap nodejs.NPMShrinkwrap
+
+	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
+	packageFileContents, err := c.os.ReadFile(packageFilePath)
+	if err != nil {
+		fmt.Printf(
+			"%s%s: %s\n",
+			command.LogErrorPrefix,
+			"Can't open the dependencies file",
+			err,
+		)
+		return npmShrinkwrap, err
+	}
+
+	err = json.Unmarshal(packageFileContents, &npmShrinkwrap)
+	if err != nil {
+		fmt.Printf(
+			"%s%s: %s\n",
+			command.LogErrorPrefix,
+			"Failed to decode the dependencies file file",
+			err,
+		)
+		return npmShrinkwrap, err
+	}
+
+	return npmShrinkwrap, nil
+}
+
 func (c *archiveCommand) Run(args []string) int {
 	cmdConfig, _, ret := getConfig(args)
 	if ret != 0 {
@@ -126,27 +155,8 @@ func (c *archiveCommand) Run(args []string) int {
 		dirPath = cmdConfig.source
 	}
 
-	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
-	packageFileContents, err := c.os.ReadFile(packageFilePath)
+	npmShrinkwrap, err := c.getDependencies(dirPath)
 	if err != nil {
-		fmt.Printf(
-			"%s%s: %s\n",
-			command.LogErrorPrefix,
-			"Can't open the dependencies file",
-			err,
-		)
-		return 1
-	}
-
-	var npmShrinkwrap nodejs.NPMShrinkwrap
-	err = json.Unmarshal(packageFileContents, &npmShrinkwrap)
-	if err != nil {
-		fmt.Printf(
-			"%s%s: %s\n",
-			command.LogErrorPrefix,
-			"Failed to decode the dependencies file file",
-			err,
-		)
 		return 1
 	}
 
