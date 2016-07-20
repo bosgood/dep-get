@@ -51,8 +51,7 @@ func collectDependencies(
 	return memo
 }
 
-// CollectDependencies flattens all given node dependencies
-// into one map of "depname" -> { version, packageUrl }
+// CollectDependencies flattens all given node dependencies into one list
 func CollectDependencies(npmShrinkwrap NPMShrinkwrap) []NodeDependency {
 	var deps []NodeDependency
 	deps = collectDependencies(deps, npmShrinkwrap.Dependencies)
