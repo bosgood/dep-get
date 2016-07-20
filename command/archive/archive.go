@@ -8,7 +8,9 @@ import (
 	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/bosgood/dep-get/nodejs"
 	"github.com/mitchellh/cli"
+	"net/http"
 	"path"
+	"io"
 )
 
 var realOS fs.FileSystem = &fs.OSFS{}
@@ -16,6 +18,7 @@ var realOS fs.FileSystem = &fs.OSFS{}
 type archiveCommand struct {
 	npmShrinkwrap nodejs.NPMShrinkwrap
 	os            fs.FileSystem
+	config        archiveCommandFlags
 }
 
 type archiveCommandFlags struct {
@@ -103,7 +106,7 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
 	return cmdConfig, cmdFlags, 0
 }
 
-func (c *archiveCommand) getDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
+func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
 	var npmShrinkwrap nodejs.NPMShrinkwrap
 
 	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
@@ -132,11 +135,40 @@ func (c *archiveCommand) getDependencies(dirPath string) (nodejs.NPMShrinkwrap, 
 	return npmShrinkwrap, nil
 }
 
+func (c *archiveCommand) fetchDependencies(npmDeps nodejs.NPMShrinkwrap) ([]string, error) {
+	deps := nodejs.CollectDependencies(npmDeps)
+	dep := deps[0]
+
+	resp, err := http.Get(dep.PackageURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
+	outFile, err := c.os.Open(outFilePath)
+	defer func() {
+		if ferr := outFile.Close(); ferr != nil && err == nil {
+			err = ferr
+		}
+	}()
+
+	outFilePaths := []string{outFilePath}
+	if err != nil {
+		return outFilePaths, err
+	}
+	_, err = io.Copy(outFile, resp.Body)
+
+	return outFilePaths, err
+}
+
 func (c *archiveCommand) Run(args []string) int {
 	cmdConfig, _, ret := getConfig(args)
 	if ret != 0 {
 		return ret
 	}
+
+	c.config = cmdConfig
 
 	var dirPath string
 	if cmdConfig.source == "" {
@@ -155,7 +187,7 @@ func (c *archiveCommand) Run(args []string) int {
 		dirPath = cmdConfig.source
 	}
 
-	npmShrinkwrap, err := c.getDependencies(dirPath)
+	npmShrinkwrap, err := c.readDependencies(dirPath)
 	if err != nil {
 		return 1
 	}
@@ -175,8 +207,28 @@ func (c *archiveCommand) Run(args []string) int {
 		len(npmShrinkwrap.Dependencies),
 	)
 
-	for k, v := range npmShrinkwrap.Dependencies {
-		fmt.Printf("%s: %s\n", k, v.Version)
+	// for k, v := range npmShrinkwrap.Dependencies {
+	// 	fmt.Printf("%s: %s\n", k, v.Version)
+	// }
+
+	fetchedDeps, err := c.fetchDependencies(npmShrinkwrap)
+	if err != nil {
+		fmt.Printf(
+			"%s%s: %s",
+			command.LogErrorPrefix,
+			"Error fetching dependencies",
+			err,
+		)
+		return 1
+	}
+
+	for d := range fetchedDeps {
+		fmt.Printf(
+			"%s%s: %s\n",
+			command.LogInfoPrefix,
+			"Fetched",
+			d,
+		)
 	}
 
 	return 0
