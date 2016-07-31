@@ -137,33 +137,39 @@ func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap,
 
 func (c *archiveCommand) fetchDependencies(npmDeps nodejs.NPMShrinkwrap) ([]string, error) {
 	deps := nodejs.CollectDependencies(npmDeps)
-	dep := deps[0]
 
-	resp, err := http.Get(dep.PackageURL)
-	defer func() {
-	    if rerr := resp.Body.Close(); rerr != nil && err == nil {
-	        err = rerr
-	    }
-	}()
-	if err != nil {
-		return nil, err
-	}
-
-	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
-	outFile, err := c.os.Create(outFilePath)
-	defer func() {
-		if ferr := outFile.Close(); ferr != nil && err == nil {
-			err = ferr
+	var outFilePaths []string
+	for _, dep := range deps {
+		resp, err := http.Get(dep.PackageURL)
+		defer func() {
+		    if rerr := resp.Body.Close(); rerr != nil && err == nil {
+		        err = rerr
+		    }
+		}()
+		if err != nil {
+			return outFilePaths, err
 		}
-	}()
 
-	outFilePaths := []string{outFilePath}
-	if err != nil {
-		return outFilePaths, err
+		outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
+		outFile, err := c.os.Create(outFilePath)
+		defer func() {
+			if ferr := outFile.Close(); ferr != nil && err == nil {
+				err = ferr
+			}
+		}()
+
+		if err != nil {
+			return outFilePaths, err
+		}
+		_, err = io.Copy(outFile, resp.Body)
+		if err != nil {
+			return outFilePaths, err
+		}
+
+		outFilePaths = append(outFilePaths, outFilePath)
 	}
-	_, err = io.Copy(outFile, resp.Body)
 
-	return outFilePaths, err
+	return outFilePaths, nil
 }
 
 func (c *archiveCommand) Run(args []string) int {
