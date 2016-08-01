@@ -25,3 +25,5 @@ _testmain.go
 
 vendor/
 tmp/
+
+gore_session_*
