@@ -185,7 +185,7 @@ func (c *archiveCommand) resolveDependencyURL(depURL string) (string, error) {
 
 		if urlObj.Host == "github.com" {
 			httpURL := fmt.Sprintf(
-				"https://github.com/%s/%s/archive/%s.tar.gz",
+				"https://github.com/%s/%s/archive/%s.tgz",
 				owner,
 				repo,
 				commit,
@@ -193,7 +193,7 @@ func (c *archiveCommand) resolveDependencyURL(depURL string) (string, error) {
 			return httpURL, nil
 		} else if urlObj.Host == "bitbucket.com" {
 			httpURL := fmt.Sprintf(
-				"https://bitbucket.org/%s/%s/get/%s.tar.gz",
+				"https://bitbucket.org/%s/%s/get/%s.tgz",
 				owner,
 				repo,
 				commit,
@@ -221,7 +221,7 @@ func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, err
 		}
 	}()
 
-	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
+	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName() + ".tgz")
 	outFile, err := c.os.Create(outFilePath)
 	defer func() {
 		if ferr := outFile.Close(); ferr != nil && err == nil {
@@ -325,14 +325,19 @@ func (c *archiveCommand) Run(args []string) int {
 		return 1
 	}
 
-	for _, d := range fetchedDeps {
+	for _, dep := range fetchedDeps {
 		fmt.Printf(
-			"%s%s: %s\n",
+			"%sFetched: %s\n",
 			command.LogInfoPrefix,
-			"Fetched",
-			d,
+			dep,
 		)
 	}
+
+	fmt.Printf(
+		"%sFetched %d dependencies.\n",
+		command.LogSuccessPrefix,
+		len(deps),
+	)
 
 	return 0
 }
