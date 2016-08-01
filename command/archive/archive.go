@@ -8,9 +8,9 @@ import (
 	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/bosgood/dep-get/nodejs"
 	"github.com/mitchellh/cli"
+	"io"
 	"net/http"
 	"path"
-	"io"
 )
 
 var realOS fs.FileSystem = &fs.OSFS{}
@@ -135,37 +135,53 @@ func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap,
 	return npmShrinkwrap, nil
 }
 
+func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, error) {
+	resp, err := http.Get(dep.PackageURL)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if rerr := resp.Body.Close(); rerr != nil && err == nil {
+			err = rerr
+		}
+	}()
+
+	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
+	outFile, err := c.os.Create(outFilePath)
+	defer func() {
+		if ferr := outFile.Close(); ferr != nil && err == nil {
+			err = ferr
+		}
+	}()
+
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(outFile, resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return outFilePath, err
+}
+
 func (c *archiveCommand) fetchDependencies(npmDeps nodejs.NPMShrinkwrap) ([]string, error) {
 	deps := nodejs.CollectDependencies(npmDeps)
+	numDeps := len(deps)
 
 	var outFilePaths []string
-	for _, dep := range deps {
-		resp, err := http.Get(dep.PackageURL)
-		defer func() {
-		    if rerr := resp.Body.Close(); rerr != nil && err == nil {
-		        err = rerr
-		    }
-		}()
+	for i, dep := range deps {
+		fmt.Printf(
+			"%s(%d/%d) Downloading %s (%s)\n",
+			command.LogInfoPrefix,
+			i, numDeps,
+			dep.GetCanonicalName(),
+			dep.PackageURL,
+		)
+		outFilePath, err := c.fetchDependency(dep)
 		if err != nil {
 			return outFilePaths, err
 		}
-
-		outFilePath := path.Join(c.config.destination, dep.GetCanonicalName())
-		outFile, err := c.os.Create(outFilePath)
-		defer func() {
-			if ferr := outFile.Close(); ferr != nil && err == nil {
-				err = ferr
-			}
-		}()
-
-		if err != nil {
-			return outFilePaths, err
-		}
-		_, err = io.Copy(outFile, resp.Body)
-		if err != nil {
-			return outFilePaths, err
-		}
-
 		outFilePaths = append(outFilePaths, outFilePath)
 	}
 
