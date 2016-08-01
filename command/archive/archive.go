@@ -29,6 +29,8 @@ type archiveCommandFlags struct {
 	platform     string
 	source       string
 	destination  string
+	whitelistStr string
+	whitelist    *regexp.Regexp
 }
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
@@ -64,6 +66,7 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
 	cmdFlags.StringVar(&cmdConfig.platform, "platform", "", "platform type (allowed: nodejs|python)")
 	cmdFlags.StringVar(&cmdConfig.source, "source", "", "project directory (default: .)")
 	cmdFlags.StringVar(&cmdConfig.destination, "destination", "", "dependencies download destination")
+	cmdFlags.StringVar(&cmdConfig.whitelistStr, "whitelist", "", "dependency name whitelist regexp")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		fmt.Printf(
@@ -104,6 +107,20 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
 			"Only nodejs supported at the moment",
 		)
 		return cmdConfig, cmdFlags, 1
+	}
+
+	// Additional command parsing goes here
+	if cmdConfig.whitelistStr != "" {
+		rgx, err := regexp.Compile(cmdConfig.whitelistStr)
+		if err != nil {
+			fmt.Printf(
+				"%sMalformed dependency whitelist regexp: %s\n",
+				command.LogErrorPrefix,
+				cmdConfig.whitelistStr,
+			)
+			return cmdConfig, cmdFlags, 1
+		}
+		cmdConfig.whitelist = rgx
 	}
 
 	return cmdConfig, cmdFlags, 0
@@ -223,8 +240,7 @@ func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, err
 	return outFilePath, err
 }
 
-func (c *archiveCommand) fetchDependencies(npmDeps nodejs.NPMShrinkwrap) ([]string, error) {
-	deps := nodejs.CollectDependencies(npmDeps)
+func (c *archiveCommand) fetchDependencies(deps []nodejs.NodeDependency) ([]string, error) {
 	numDeps := len(deps)
 
 	var outFilePaths []string
@@ -278,24 +294,27 @@ func (c *archiveCommand) Run(args []string) int {
 
 	c.npmShrinkwrap = npmShrinkwrap
 
-	// fmt.Printf(
-	// 	"%s%s: %s",
-	// 	command.LogSuccessPrefix,
-	// 	"Read dependencies file",
-	// 	npmShrinkwrap,
-	// )
+	allDeps := nodejs.CollectDependencies(npmShrinkwrap)
+	var deps []nodejs.NodeDependency
+
+	// Filter deps according to whitelist if present
+	if cmdConfig.whitelistStr == "" {
+		deps = allDeps
+	} else {
+		for _, dep := range allDeps {
+			if cmdConfig.whitelist.MatchString(dep.Name) {
+				deps = append(deps, dep)
+			}
+		}
+	}
 
 	fmt.Printf(
-		"%sFound %d top-level dependencies.\n",
+		"%sFound %d matching dependencies.\n",
 		command.LogSuccessPrefix,
-		len(npmShrinkwrap.Dependencies),
+		len(deps),
 	)
 
-	// for k, v := range npmShrinkwrap.Dependencies {
-	// 	fmt.Printf("%s: %s\n", k, v.Version)
-	// }
-
-	fetchedDeps, err := c.fetchDependencies(npmShrinkwrap)
+	fetchedDeps, err := c.fetchDependencies(deps)
 	if err != nil {
 		fmt.Printf(
 			"%s%s: %s",
