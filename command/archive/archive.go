@@ -10,7 +10,10 @@ import (
 	"github.com/mitchellh/cli"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
+	"regexp"
+	"strings"
 )
 
 var realOS fs.FileSystem = &fs.OSFS{}
@@ -23,9 +26,9 @@ type archiveCommand struct {
 
 type archiveCommandFlags struct {
 	command.BaseFlags
-	platform    string
-	source      string
-	destination string
+	platform     string
+	source       string
+	destination  string
 }
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
@@ -135,8 +138,63 @@ func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap,
 	return npmShrinkwrap, nil
 }
 
+var repoPattern = regexp.MustCompile(`^/.+/.+\.git$`)
+
+func (c *archiveCommand) resolveDependencyURL(depURL string) (string, error) {
+	urlObj, err := url.Parse(depURL)
+	if err != nil {
+		return depURL, nil
+	}
+
+	// Plain old HTTP(s) URLs
+	scheme := urlObj.Scheme
+	if scheme == "http" || scheme == "https" {
+		return depURL, nil
+	}
+
+	// git URLs whitelisted by site
+	if scheme == "git" {
+		if !repoPattern.MatchString(urlObj.Path) {
+			return depURL, fmt.Errorf("Unknown git URL path format: %s", urlObj.Path)
+		}
+		repoParts := strings.Split(strings.Split(urlObj.Path, ".")[0], "/")[1:]
+		owner := repoParts[0]
+		repo := repoParts[1]
+
+		commit := urlObj.Fragment
+		if commit == "" {
+			commit = "master"
+		}
+
+		if urlObj.Host == "github.com" {
+			httpURL := fmt.Sprintf(
+				"https://github.com/%s/%s/archive/%s.tar.gz",
+				owner,
+				repo,
+				commit,
+			)
+			return httpURL, nil
+		} else if urlObj.Host == "bitbucket.com" {
+			httpURL := fmt.Sprintf(
+				"https://bitbucket.org/%s/%s/get/%s.tar.gz",
+				owner,
+				repo,
+				commit,
+			)
+			return httpURL, nil
+		}
+	}
+
+	return depURL, fmt.Errorf("Unknown URL scheme: %s", urlObj.Scheme)
+}
+
 func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, error) {
-	resp, err := http.Get(dep.PackageURL)
+	depURL, err := c.resolveDependencyURL(dep.PackageURL)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Get(depURL)
 	if err != nil {
 		return "", err
 	}
