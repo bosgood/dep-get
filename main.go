@@ -5,6 +5,7 @@ import (
 	"os"
 	"github.com/mitchellh/cli"
 	"github.com/bosgood/dep-get/command/archive"
+	"github.com/bosgood/dep-get/command/install"
 )
 
 func main() {
@@ -12,7 +13,7 @@ func main() {
 	c.Args = os.Args[1:]
 	c.Commands = map[string]cli.CommandFactory{
 		"archive": archive.NewArchiveCommand,
-		// "install": NewInstallCommand,
+		"install": install.NewInstallCommand,
 	}
 
 	exitStatus, err := c.Run()
