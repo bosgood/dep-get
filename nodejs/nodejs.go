@@ -36,6 +36,11 @@ type NodeDependency struct {
 	PackageURL string
 }
 
+// GetCanonicalName returns a unique name for the package at this version
+func (d *NodeDependency) GetCanonicalName() string {
+	return fmt.Sprintf("%s@%s", d.Name, d.Version)
+}
+
 func collectDependencies(
 	memo []NodeDependency,
 	deps map[string]*NPMShrinkwrapDependency,
@@ -51,8 +56,7 @@ func collectDependencies(
 	return memo
 }
 
-// CollectDependencies flattens all given node dependencies
-// into one map of "depname" -> { version, packageUrl }
+// CollectDependencies flattens all given node dependencies into one list
 func CollectDependencies(npmShrinkwrap NPMShrinkwrap) []NodeDependency {
 	var deps []NodeDependency
 	deps = collectDependencies(deps, npmShrinkwrap.Dependencies)
@@ -60,7 +64,7 @@ func CollectDependencies(npmShrinkwrap NPMShrinkwrap) []NodeDependency {
 	var dedupedDeps []NodeDependency
 	var depSet = make(map[string]bool)
 	for _, dep := range deps {
-		depStr := fmt.Sprintf("%s@%s", dep.Name, dep.Version)
+		depStr := dep.GetCanonicalName()
 		if dupeDep := depSet[depStr]; !dupeDep {
 			dedupedDeps = append(dedupedDeps, dep)
 			depSet[depStr] = true

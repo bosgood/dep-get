@@ -8,7 +8,12 @@ import (
 	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/bosgood/dep-get/nodejs"
 	"github.com/mitchellh/cli"
+	"io"
+	"net/http"
+	"net/url"
 	"path"
+	"regexp"
+	"strings"
 )
 
 var realOS fs.FileSystem = &fs.OSFS{}
@@ -16,13 +21,16 @@ var realOS fs.FileSystem = &fs.OSFS{}
 type archiveCommand struct {
 	npmShrinkwrap nodejs.NPMShrinkwrap
 	os            fs.FileSystem
+	config        archiveCommandFlags
 }
 
 type archiveCommandFlags struct {
 	command.BaseFlags
-	platform    string
-	source      string
-	destination string
+	platform     string
+	source       string
+	destination  string
+	whitelistStr string
+	whitelist    *regexp.Regexp
 }
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
@@ -58,6 +66,7 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
 	cmdFlags.StringVar(&cmdConfig.platform, "platform", "", "platform type (allowed: nodejs|python)")
 	cmdFlags.StringVar(&cmdConfig.source, "source", "", "project directory (default: .)")
 	cmdFlags.StringVar(&cmdConfig.destination, "destination", "", "dependencies download destination")
+	cmdFlags.StringVar(&cmdConfig.whitelistStr, "whitelist", "", "dependency name whitelist regexp")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		fmt.Printf(
@@ -100,10 +109,24 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
 		return cmdConfig, cmdFlags, 1
 	}
 
+	// Additional command parsing goes here
+	if cmdConfig.whitelistStr != "" {
+		rgx, err := regexp.Compile(cmdConfig.whitelistStr)
+		if err != nil {
+			fmt.Printf(
+				"%sMalformed dependency whitelist regexp: %s\n",
+				command.LogErrorPrefix,
+				cmdConfig.whitelistStr,
+			)
+			return cmdConfig, cmdFlags, 1
+		}
+		cmdConfig.whitelist = rgx
+	}
+
 	return cmdConfig, cmdFlags, 0
 }
 
-func (c *archiveCommand) getDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
+func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
 	var npmShrinkwrap nodejs.NPMShrinkwrap
 
 	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
@@ -132,11 +155,120 @@ func (c *archiveCommand) getDependencies(dirPath string) (nodejs.NPMShrinkwrap, 
 	return npmShrinkwrap, nil
 }
 
+var repoPattern = regexp.MustCompile(`^/.+/.+\.git$`)
+
+func (c *archiveCommand) resolveDependencyURL(depURL string) (string, error) {
+	urlObj, err := url.Parse(depURL)
+	if err != nil {
+		return depURL, nil
+	}
+
+	// Plain old HTTP(s) URLs
+	scheme := urlObj.Scheme
+	if scheme == "http" || scheme == "https" {
+		return depURL, nil
+	}
+
+	// git URLs whitelisted by site
+	if scheme == "git" {
+		if !repoPattern.MatchString(urlObj.Path) {
+			return depURL, fmt.Errorf("Unknown git URL path format: %s", urlObj.Path)
+		}
+		repoParts := strings.Split(strings.Split(urlObj.Path, ".")[0], "/")[1:]
+		owner := repoParts[0]
+		repo := repoParts[1]
+
+		commit := urlObj.Fragment
+		if commit == "" {
+			commit = "master"
+		}
+
+		if urlObj.Host == "github.com" {
+			httpURL := fmt.Sprintf(
+				"https://github.com/%s/%s/archive/%s.tgz",
+				owner,
+				repo,
+				commit,
+			)
+			return httpURL, nil
+		} else if urlObj.Host == "bitbucket.com" {
+			httpURL := fmt.Sprintf(
+				"https://bitbucket.org/%s/%s/get/%s.tgz",
+				owner,
+				repo,
+				commit,
+			)
+			return httpURL, nil
+		}
+	}
+
+	return depURL, fmt.Errorf("Unknown URL scheme: %s", urlObj.Scheme)
+}
+
+func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, error) {
+	depURL, err := c.resolveDependencyURL(dep.PackageURL)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Get(depURL)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if rerr := resp.Body.Close(); rerr != nil && err == nil {
+			err = rerr
+		}
+	}()
+
+	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName() + ".tgz")
+	outFile, err := c.os.Create(outFilePath)
+	defer func() {
+		if ferr := outFile.Close(); ferr != nil && err == nil {
+			err = ferr
+		}
+	}()
+
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(outFile, resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return outFilePath, err
+}
+
+func (c *archiveCommand) fetchDependencies(deps []nodejs.NodeDependency) ([]string, error) {
+	numDeps := len(deps)
+
+	var outFilePaths []string
+	for i, dep := range deps {
+		fmt.Printf(
+			"%s(%d/%d) Downloading %s (%s)\n",
+			command.LogInfoPrefix,
+			i, numDeps,
+			dep.GetCanonicalName(),
+			dep.PackageURL,
+		)
+		outFilePath, err := c.fetchDependency(dep)
+		if err != nil {
+			return outFilePaths, err
+		}
+		outFilePaths = append(outFilePaths, outFilePath)
+	}
+
+	return outFilePaths, nil
+}
+
 func (c *archiveCommand) Run(args []string) int {
 	cmdConfig, _, ret := getConfig(args)
 	if ret != 0 {
 		return ret
 	}
+
+	c.config = cmdConfig
 
 	var dirPath string
 	if cmdConfig.source == "" {
@@ -155,29 +287,57 @@ func (c *archiveCommand) Run(args []string) int {
 		dirPath = cmdConfig.source
 	}
 
-	npmShrinkwrap, err := c.getDependencies(dirPath)
+	npmShrinkwrap, err := c.readDependencies(dirPath)
 	if err != nil {
 		return 1
 	}
 
 	c.npmShrinkwrap = npmShrinkwrap
 
-	// fmt.Printf(
-	// 	"%s%s: %s",
-	// 	command.LogSuccessPrefix,
-	// 	"Read dependencies file",
-	// 	npmShrinkwrap,
-	// )
+	allDeps := nodejs.CollectDependencies(npmShrinkwrap)
+	var deps []nodejs.NodeDependency
+
+	// Filter deps according to whitelist if present
+	if cmdConfig.whitelistStr == "" {
+		deps = allDeps
+	} else {
+		for _, dep := range allDeps {
+			if cmdConfig.whitelist.MatchString(dep.Name) {
+				deps = append(deps, dep)
+			}
+		}
+	}
 
 	fmt.Printf(
-		"%sFound %d top-level dependencies.\n",
+		"%sFound %d matching dependencies.\n",
 		command.LogSuccessPrefix,
-		len(npmShrinkwrap.Dependencies),
+		len(deps),
 	)
 
-	for k, v := range npmShrinkwrap.Dependencies {
-		fmt.Printf("%s: %s\n", k, v.Version)
+	fetchedDeps, err := c.fetchDependencies(deps)
+	if err != nil {
+		fmt.Printf(
+			"%s%s: %s",
+			command.LogErrorPrefix,
+			"Error fetching dependencies",
+			err,
+		)
+		return 1
 	}
+
+	for _, dep := range fetchedDeps {
+		fmt.Printf(
+			"%sFetched: %s\n",
+			command.LogInfoPrefix,
+			dep,
+		)
+	}
+
+	fmt.Printf(
+		"%sFetched %d dependencies.\n",
+		command.LogSuccessPrefix,
+		len(deps),
+	)
 
 	return 0
 }

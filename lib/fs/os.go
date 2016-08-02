@@ -13,6 +13,11 @@ func (f *OSFS) Open(name string) (File, error) {
 	return os.Open(name)
 }
 
+// Create creates a file
+func (f *OSFS) Create(name string) (File, error) {
+	return os.Create(name)
+}
+
 // Stat stats a file
 func (f *OSFS) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)

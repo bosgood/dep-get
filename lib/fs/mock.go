@@ -8,6 +8,8 @@ import (
 type MockFS struct {
 	OpenResult     File
 	OpenError      error
+	CreateResult     File
+	CreateError      error
 	StatResult     os.FileInfo
 	StatError      error
 	GetwdResult    string
@@ -19,6 +21,11 @@ type MockFS struct {
 // Open opens a file
 func (m *MockFS) Open(name string) (File, error) {
 	return m.OpenResult, m.OpenError
+}
+
+// Create creates a file
+func (m *MockFS) Create(name string) (File, error) {
+	return m.CreateResult, m.CreateError
 }
 
 // Stat stats a file
