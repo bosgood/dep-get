@@ -12,6 +12,7 @@ type FileSystem interface {
 	Stat(name string) (os.FileInfo, error)
 	Getwd() (string, error)
 	ReadFile(filename string) ([]byte, error)
+	ReadDir(dirpath string) ([]os.FileInfo, error)
 }
 
 // File represents file-based interactions

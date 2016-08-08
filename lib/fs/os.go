@@ -32,3 +32,8 @@ func (f *OSFS) Getwd() (string, error) {
 func (f *OSFS) ReadFile(filename string) ([]byte, error) {
 	return ioutil.ReadFile(filename)
 }
+
+// ReadDir reads a directory's contents
+func (f *OSFS) ReadDir(dirpath string) ([]os.FileInfo, error) {
+	return ioutil.ReadDir(dirpath)
+}
