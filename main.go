@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 	"github.com/mitchellh/cli"
-	"github.com/bosgood/dep-get/command/archive"
+	"github.com/bosgood/dep-get/command/fetch"
 	"github.com/bosgood/dep-get/command/install"
 )
 
@@ -12,7 +12,7 @@ func main() {
 	c := cli.NewCLI("dep-get", "0.0.1")
 	c.Args = os.Args[1:]
 	c.Commands = map[string]cli.CommandFactory{
-		"archive": archive.NewArchiveCommand,
+		"fetch": fetch.NewArchiveCommand,
 		"install": install.NewInstallCommand,
 	}
 

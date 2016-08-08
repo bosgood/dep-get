@@ -1,4 +1,4 @@
-package archive
+package fetch
 
 import (
 	"encoding/json"
@@ -18,13 +18,13 @@ import (
 
 var realOS fs.FileSystem = &fs.OSFS{}
 
-type archiveCommand struct {
+type fetchCommand struct {
 	npmShrinkwrap nodejs.NPMShrinkwrap
 	os            fs.FileSystem
-	config        archiveCommandFlags
+	config        fetchCommandFlags
 }
 
-type archiveCommandFlags struct {
+type fetchCommandFlags struct {
 	command.BaseFlags
 	platform     string
 	source       string
@@ -34,7 +34,7 @@ type archiveCommandFlags struct {
 }
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
-	cmd := &archiveCommand{
+	cmd := &fetchCommand{
 		os: os,
 	}
 	return cmd, nil
@@ -47,20 +47,20 @@ func NewArchiveCommand() (cli.Command, error) {
 	return newArchiveCommandWithFS(realOS)
 }
 
-func (c *archiveCommand) Synopsis() string {
+func (c *fetchCommand) Synopsis() string {
 	return "Archives application dependencies"
 }
 
-func (c *archiveCommand) Help() string {
+func (c *fetchCommand) Help() string {
 	_, flagSet, _ := getConfig([]string{})
 	flagSet.PrintDefaults()
 	return ""
 }
 
-func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
-	var cmdConfig archiveCommandFlags
+func getConfig(args []string) (fetchCommandFlags, *flag.FlagSet, int) {
+	var cmdConfig fetchCommandFlags
 
-	cmdFlags := flag.NewFlagSet("archive", flag.ExitOnError)
+	cmdFlags := flag.NewFlagSet("fetch", flag.ExitOnError)
 	cmdFlags.BoolVar(&cmdConfig.Help, "help", false,
 		"show command help")
 	cmdFlags.StringVar(&cmdConfig.platform, "platform", "", "platform type (allowed: nodejs|python)")
@@ -126,7 +126,7 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
 	return cmdConfig, cmdFlags, 0
 }
 
-func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
+func (c *fetchCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
 	var npmShrinkwrap nodejs.NPMShrinkwrap
 
 	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
@@ -157,7 +157,7 @@ func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap,
 
 var repoPattern = regexp.MustCompile(`^/.+/.+\.git$`)
 
-func (c *archiveCommand) resolveDependencyURL(depURL string) (string, error) {
+func (c *fetchCommand) resolveDependencyURL(depURL string) (string, error) {
 	urlObj, err := url.Parse(depURL)
 	if err != nil {
 		return depURL, nil
@@ -205,7 +205,7 @@ func (c *archiveCommand) resolveDependencyURL(depURL string) (string, error) {
 	return depURL, fmt.Errorf("Unknown URL scheme: %s", urlObj.Scheme)
 }
 
-func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, error) {
+func (c *fetchCommand) fetchDependency(dep nodejs.NodeDependency) (string, error) {
 	depURL, err := c.resolveDependencyURL(dep.PackageURL)
 	if err != nil {
 		return "", err
@@ -240,7 +240,7 @@ func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, err
 	return outFilePath, err
 }
 
-func (c *archiveCommand) fetchDependencies(deps []nodejs.NodeDependency) ([]string, error) {
+func (c *fetchCommand) fetchDependencies(deps []nodejs.NodeDependency) ([]string, error) {
 	numDeps := len(deps)
 
 	var outFilePaths []string
@@ -262,7 +262,7 @@ func (c *archiveCommand) fetchDependencies(deps []nodejs.NodeDependency) ([]stri
 	return outFilePaths, nil
 }
 
-func (c *archiveCommand) Run(args []string) int {
+func (c *fetchCommand) Run(args []string) int {
 	cmdConfig, _, ret := getConfig(args)
 	if ret != 0 {
 		return ret

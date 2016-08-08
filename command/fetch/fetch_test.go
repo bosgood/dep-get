@@ -1,4 +1,4 @@
-package archive
+package fetch
 
 import (
 	"github.com/bosgood/dep-get/lib/fs"
