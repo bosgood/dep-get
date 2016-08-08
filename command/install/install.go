@@ -6,7 +6,8 @@ import (
 	"github.com/bosgood/dep-get/command"
 	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/mitchellh/cli"
-	// "regexp"
+	"os/exec"
+	"path"
 )
 
 type installCommand struct {
@@ -104,13 +105,34 @@ func (c *installCommand) Run(args []string) int {
 	archives, err := c.os.ReadDir(cmdConfig.source)
 	if err != nil {
 		fmt.Printf(
-			"%sError reading archive path: %s",
+			"%sError reading archive path: %s\n",
 			command.LogErrorPrefix,
 			err,
 		)
 	}
-	for _, fileName := range archives {
-		fmt.Println(fileName)
+
+	for _, fileInfo := range archives {
+		archiveFilePath := path.Join(
+			cmdConfig.source,
+			fileInfo.Name(),
+		)
+
+		fmt.Printf(
+			"%sCaching dependency: %s\n",
+			command.LogInfoPrefix,
+			fileInfo.Name(),
+		)
+
+		cmd := exec.Command("npm", "cache", "add", archiveFilePath)
+		err = cmd.Run()
+		if err != nil {
+			fmt.Printf(
+				"%sError executing command: %s\n",
+				command.LogErrorPrefix,
+				err,
+			)
+			return 1
+		}
 	}
 
 	return 0
