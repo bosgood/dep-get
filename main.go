@@ -5,6 +5,7 @@ import (
 	"os"
 	"github.com/mitchellh/cli"
 	"github.com/bosgood/dep-get/command/fetch"
+	"github.com/bosgood/dep-get/command/archive"
 	"github.com/bosgood/dep-get/command/install"
 )
 
@@ -13,6 +14,7 @@ func main() {
 	c.Args = os.Args[1:]
 	c.Commands = map[string]cli.CommandFactory{
 		"fetch": fetch.NewFetchCommand,
+		"archive": archive.NewArchiveCommand,
 		"install": install.NewInstallCommand,
 	}
 
