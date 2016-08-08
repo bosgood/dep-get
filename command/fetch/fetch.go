@@ -33,18 +33,18 @@ type fetchCommandFlags struct {
 	whitelist    *regexp.Regexp
 }
 
-func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
+func newFetchCommandWithFS(os fs.FileSystem) (cli.Command, error) {
 	cmd := &fetchCommand{
 		os: os,
 	}
 	return cmd, nil
 }
 
-// NewArchiveCommand is used to generate a command object
+// NewFetchCommand is used to generate a command object
 // which orchestrates package dependency discovery
 // and archiving to S3
-func NewArchiveCommand() (cli.Command, error) {
-	return newArchiveCommandWithFS(realOS)
+func NewFetchCommand() (cli.Command, error) {
+	return newFetchCommandWithFS(realOS)
 }
 
 func (c *fetchCommand) Synopsis() string {

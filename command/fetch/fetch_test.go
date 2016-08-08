@@ -16,8 +16,8 @@ func (e *invalidAssertionError) Error() string {
 	return "Invalid assertion"
 }
 
-func TestArchiveCommandBasics(t *testing.T) {
-	cmd, err := NewArchiveCommand()
+func TestFetchCommandBasics(t *testing.T) {
+	cmd, err := NewFetchCommand()
 
 	if err != nil {
 		t.Errorf("err: %s", err)
@@ -33,11 +33,11 @@ func TestArchiveCommandBasics(t *testing.T) {
 	// }
 }
 
-func TestArchiveCommandHelp(t *testing.T) {
+func TestFetchCommandHelp(t *testing.T) {
 	mockFS := &fs.MockFS{
 		ReadFileError: &invalidAssertionError{},
 	}
-	cmd, err := newArchiveCommandWithFS(mockFS)
+	cmd, err := newFetchCommandWithFS(mockFS)
 
 	if err != nil {
 		t.Errorf("err: %s", err)
@@ -48,12 +48,12 @@ func TestArchiveCommandHelp(t *testing.T) {
 	}
 }
 
-func TestArchiveCommandLoadFile(t *testing.T) {
+func TestFetchCommandLoadFile(t *testing.T) {
 	var dummyPackageJSONBytes = []byte("{}")
 	mockFS := &fs.MockFS{
 		ReadFileResult: dummyPackageJSONBytes,
 	}
-	cmd, err := newArchiveCommandWithFS(mockFS)
+	cmd, err := newFetchCommandWithFS(mockFS)
 
 	if err != nil {
 		t.Errorf("err: %s", err)
