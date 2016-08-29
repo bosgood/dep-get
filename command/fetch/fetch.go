@@ -229,7 +229,7 @@ func (c *fetchCommand) fetchDependency(dep nodejs.NodeDependency) (string, error
 		}
 	}()
 
-	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName() + ".tgz")
+	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName()+".tgz")
 	outFile, err := c.os.Create(outFilePath)
 	defer func() {
 		if ferr := outFile.Close(); ferr != nil && err == nil {

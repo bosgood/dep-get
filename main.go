@@ -13,7 +13,7 @@ func main() {
 	c := cli.NewCLI("dep-get", "0.0.1")
 	c.Args = os.Args[1:]
 	c.Commands = map[string]cli.CommandFactory{
-		"fetch": fetch.NewFetchCommand,
+		"fetch":   fetch.NewFetchCommand,
 		"archive": archive.NewArchiveCommand,
 		"install": install.NewInstallCommand,
 	}
