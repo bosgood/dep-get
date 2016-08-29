@@ -1,12 +1,12 @@
 package main
 
 import (
+	"bitbucket.org/bosgood/dep-get/command/archive"
+	"bitbucket.org/bosgood/dep-get/command/fetch"
+	"bitbucket.org/bosgood/dep-get/command/install"
+	"github.com/mitchellh/cli"
 	"log"
 	"os"
-	"github.com/mitchellh/cli"
-	"github.com/bosgood/dep-get/command/fetch"
-	"github.com/bosgood/dep-get/command/archive"
-	"github.com/bosgood/dep-get/command/install"
 )
 
 func main() {

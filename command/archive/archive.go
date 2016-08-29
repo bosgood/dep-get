@@ -1,10 +1,11 @@
 package archive
 
 import (
+	"bitbucket.org/bosgood/dep-get/command"
+	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"flag"
 	"fmt"
-	"github.com/bosgood/dep-get/command"
-	"github.com/bosgood/dep-get/lib/fs"
+	// "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/mitchellh/cli"
 	"path"
 )

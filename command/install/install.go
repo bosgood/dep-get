@@ -1,10 +1,10 @@
 package install
 
 import (
+	"bitbucket.org/bosgood/dep-get/command"
+	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"flag"
 	"fmt"
-	"github.com/bosgood/dep-get/command"
-	"github.com/bosgood/dep-get/lib/fs"
 	"github.com/mitchellh/cli"
 	"os/exec"
 	"path"

@@ -1,7 +1,7 @@
 package fetch
 
 import (
-	"github.com/bosgood/dep-get/lib/fs"
+	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"testing"
 )
 

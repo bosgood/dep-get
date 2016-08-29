@@ -1,12 +1,12 @@
 package fetch
 
 import (
+	"bitbucket.org/bosgood/dep-get/command"
+	"bitbucket.org/bosgood/dep-get/lib/fs"
+	"bitbucket.org/bosgood/dep-get/nodejs"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/bosgood/dep-get/command"
-	"github.com/bosgood/dep-get/lib/fs"
-	"github.com/bosgood/dep-get/nodejs"
 	"github.com/mitchellh/cli"
 	"io"
 	"net/http"
