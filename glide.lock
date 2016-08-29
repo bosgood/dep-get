@@ -1,10 +1,33 @@
-hash: 7594947f0c4161b500b5eab64b2c9199a5719f09263f67b94cedb19b459f396f
-updated: 2016-07-09T15:45:50.47274584-04:00
+hash: b88ba03c532a0fb46df472016b90eccc888e4137763abdc6b4620c7cd5664bc4
+updated: 2016-08-29T13:35:46.398805041-04:00
 imports:
 - name: github.com/armon/go-radix
   version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
+- name: github.com/aws/aws-sdk-go
+  version: 41d27747f314ab5d608a470e23f1d92bd5249b0c
+  subpackages:
+  - service/s3
+  - aws
+  - aws/awserr
+  - aws/awsutil
+  - aws/client
+  - aws/client/metadata
+  - aws/request
+  - aws/signer/v4
+  - private/protocol
+  - private/protocol/restxml
+  - private/waiter
+  - aws/credentials
+  - private/protocol/rest
+  - private/protocol/query
+  - private/protocol/xml/xmlutil
+  - private/protocol/query/queryutil
 - name: github.com/bgentry/speakeasy
   version: e1439544d8ecd0f3e9373a636d447668096a8f81
+- name: github.com/go-ini/ini
+  version: 6e4869b434bd001f6983749881c7ead3545887d8
+- name: github.com/jmespath/go-jmespath
+  version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
 - name: github.com/mattn/go-isatty
   version: 56b76bdf51f7708750eac80fa38b952bb9f32639
 - name: github.com/mitchellh/cli
