@@ -14,3 +14,12 @@ var (
 type BaseFlags struct {
 	Help bool
 }
+
+// ConfigError reports errors in command configuration
+type ConfigError struct {
+	Explanation string
+}
+
+func (e *ConfigError) Error() string {
+	return e.Explanation
+}

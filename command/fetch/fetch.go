@@ -57,7 +57,7 @@ func (c *fetchCommand) Help() string {
 	return ""
 }
 
-func getConfig(args []string) (fetchCommandFlags, *flag.FlagSet, int) {
+func getConfig(args []string) (fetchCommandFlags, *flag.FlagSet, error) {
 	var cmdConfig fetchCommandFlags
 
 	cmdFlags := flag.NewFlagSet("fetch", flag.ExitOnError)
@@ -69,17 +69,19 @@ func getConfig(args []string) (fetchCommandFlags, *flag.FlagSet, int) {
 	cmdFlags.StringVar(&cmdConfig.whitelistStr, "whitelist", "", "dependency name whitelist regexp")
 
 	if err := cmdFlags.Parse(args); err != nil {
-		fmt.Printf(
+		errMsg := fmt.Sprintf(
 			"%s%s: %s\n",
 			command.LogErrorPrefix,
 			"Error parsing args",
 			err,
 		)
-		return cmdConfig, cmdFlags, 1
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
 	if cmdConfig.Help {
-		return cmdConfig, cmdFlags, cli.RunResultHelp
+		return cmdConfig, cmdFlags, &command.ConfigError{}
 	}
 
 	// All missing required arguments checks go here
@@ -91,39 +93,45 @@ func getConfig(args []string) (fetchCommandFlags, *flag.FlagSet, int) {
 	}
 
 	if missingArg != "" {
-		fmt.Printf(
+		errMsg := fmt.Sprintf(
 			"%s%s: %s\n",
 			command.LogErrorPrefix,
 			"Missing required argument",
 			missingArg,
 		)
-		return cmdConfig, cmdFlags, cli.RunResultHelp
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
 	if cmdConfig.platform != "nodejs" {
-		fmt.Printf(
+		errMsg := fmt.Sprintf(
 			"%s%s\n",
 			command.LogErrorPrefix,
 			"Only nodejs supported at the moment",
 		)
-		return cmdConfig, cmdFlags, 1
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
 	// Additional command parsing goes here
 	if cmdConfig.whitelistStr != "" {
 		rgx, err := regexp.Compile(cmdConfig.whitelistStr)
 		if err != nil {
-			fmt.Printf(
+			errMsg := fmt.Sprintf(
 				"%sMalformed dependency whitelist regexp: %s\n",
 				command.LogErrorPrefix,
 				cmdConfig.whitelistStr,
 			)
-			return cmdConfig, cmdFlags, 1
+			return cmdConfig, cmdFlags, &command.ConfigError{
+				Explanation: errMsg,
+			}
 		}
 		cmdConfig.whitelist = rgx
 	}
 
-	return cmdConfig, cmdFlags, 0
+	return cmdConfig, cmdFlags, nil
 }
 
 func (c *fetchCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
@@ -263,9 +271,13 @@ func (c *fetchCommand) fetchDependencies(deps []nodejs.NodeDependency) ([]string
 }
 
 func (c *fetchCommand) Run(args []string) int {
-	cmdConfig, _, ret := getConfig(args)
-	if ret != 0 {
-		return ret
+	cmdConfig, _, err := getConfig(args)
+	if err != nil {
+		errMsg := err.Error()
+		if errMsg != "" {
+			fmt.Print(err.Error())
+		}
+		return cli.RunResultHelp
 	}
 
 	c.config = cmdConfig

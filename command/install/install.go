@@ -46,7 +46,7 @@ func (c *installCommand) Help() string {
 	return ""
 }
 
-func getConfig(args []string) (installCommandFlags, *flag.FlagSet, int) {
+func getConfig(args []string) (installCommandFlags, *flag.FlagSet, error) {
 	var cmdConfig installCommandFlags
 
 	cmdFlags := flag.NewFlagSet("install", flag.ExitOnError)
@@ -55,17 +55,19 @@ func getConfig(args []string) (installCommandFlags, *flag.FlagSet, int) {
 	cmdFlags.StringVar(&cmdConfig.source, "source", "", "project directory (default: .)")
 
 	if err := cmdFlags.Parse(args); err != nil {
-		fmt.Printf(
+		errMsg := fmt.Sprintf(
 			"%s%s: %s\n",
 			command.LogErrorPrefix,
 			"Error parsing args",
 			err,
 		)
-		return cmdConfig, cmdFlags, 1
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
 	if cmdConfig.Help {
-		return cmdConfig, cmdFlags, cli.RunResultHelp
+		return cmdConfig, cmdFlags, &command.ConfigError{}
 	}
 
 	// All missing required argument checks go here
@@ -75,31 +77,39 @@ func getConfig(args []string) (installCommandFlags, *flag.FlagSet, int) {
 	}
 
 	if missingArg != "" {
-		fmt.Printf(
+		errMsg := fmt.Sprintf(
 			"%s%s: %s\n",
 			command.LogErrorPrefix,
 			"Missing required argument",
 			missingArg,
 		)
-		return cmdConfig, cmdFlags, cli.RunResultHelp
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
 	if cmdConfig.platform != "nodejs" {
-		fmt.Printf(
+		errMsg := fmt.Sprintf(
 			"%s%s\n",
 			command.LogErrorPrefix,
 			"Only nodejs supported at the moment",
 		)
-		return cmdConfig, cmdFlags, 1
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
-	return cmdConfig, cmdFlags, 0
+	return cmdConfig, cmdFlags, nil
 }
 
 func (c *installCommand) Run(args []string) int {
-	cmdConfig, _, ret := getConfig(args)
-	if ret != 0 {
-		return ret
+	cmdConfig, _, err := getConfig(args)
+	if err != nil {
+		errMsg := err.Error()
+		if errMsg != "" {
+			fmt.Print(err.Error())
+		}
+		return cli.RunResultHelp
 	}
 
 	archives, err := c.os.ReadDir(cmdConfig.source)
