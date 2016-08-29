@@ -5,7 +5,11 @@ import (
 	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"flag"
 	"fmt"
-	// "github.com/aws/aws-sdk-go/service/s3"
+	"regexp"
+	"github.com/aws/aws-sdk-go/aws"
+	// "github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/mitchellh/cli"
 	"path"
 )
@@ -19,9 +23,17 @@ type archiveCommandFlags struct {
 	command.BaseFlags
 	platform string
 	source   string
+	region   string
+	profile  string
+	s3URL    string
+	bucket   string
+	s3Key      string
 }
 
-var realOS fs.FileSystem = &fs.OSFS{}
+var (
+	realOS fs.FileSystem = &fs.OSFS{}
+	s3URLPattern = regexp.MustCompile(`^s3:\/\/(?P<Bucket>.+)\/(?P<Path>.+)$`)
+)
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
 	cmd := &archiveCommand{
@@ -53,12 +65,14 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, error) {
 	cmdFlags.BoolVar(&cmdConfig.Help, "help", false, "show command help")
 	cmdFlags.StringVar(&cmdConfig.platform, "platform", "", "platform type (allowed: nodejs|python)")
 	cmdFlags.StringVar(&cmdConfig.source, "source", "", "project directory (default: .)")
+	cmdFlags.StringVar(&cmdConfig.profile, "profile", "", "AWS credentials profile (default: default)")
+	cmdFlags.StringVar(&cmdConfig.region, "region", "", "AWS region")
+	cmdFlags.StringVar(&cmdConfig.s3URL, "path", "", "S3 upload path")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		errMsg := fmt.Sprintf(
-			"%s%s: %s\n",
+			"%sError parsing args: %s\n",
 			command.LogErrorPrefix,
-			"Error parsing args",
 			err,
 		)
 		return cmdConfig, cmdFlags, &command.ConfigError{
@@ -76,15 +90,18 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, error) {
 		missingArg = "platform"
 	}
 
-	if cmdConfig.source == "" {
-		missingArg = "source"
+	if cmdConfig.region == "" {
+		missingArg = "region"
+	}
+
+	if cmdConfig.s3URL == "" {
+		missingArg = "path"
 	}
 
 	if missingArg != "" {
 		errMsg := fmt.Sprintf(
-			"%s%s: %s\n",
+			"%sMissing required argument: %s\n",
 			command.LogErrorPrefix,
-			"Missing required argument",
 			missingArg,
 		)
 		return cmdConfig, cmdFlags, &command.ConfigError{
@@ -94,16 +111,35 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, error) {
 
 	if cmdConfig.platform != "nodejs" {
 		errMsg := fmt.Sprintf(
-			"%s%s\n",
+			"%sOnly nodejs supported at the moment\n",
 			command.LogErrorPrefix,
-			"Only nodejs supported at the moment",
 		)
 		return cmdConfig, cmdFlags, &command.ConfigError{
 			Explanation: errMsg,
 		}
 	}
 
+	// Parameter validation goes here
+	s3URLMatch := s3URLPattern.FindStringSubmatch(cmdConfig.s3URL)
+	if s3URLMatch == nil || len(s3URLMatch) < 3 {
+		errMsg := fmt.Sprintf(
+			"%sInvalid S3 path: %s\n",
+			command.LogErrorPrefix,
+			cmdConfig.s3URL,
+		)
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
+	}
+
+	cmdConfig.bucket = s3URLMatch[1]
+	cmdConfig.s3Key = s3URLMatch[2]
+
 	return cmdConfig, cmdFlags, nil
+}
+
+func (c *archiveCommand) Upload() error {
+	return nil
 }
 
 func (c *archiveCommand) Run(args []string) int {
@@ -125,18 +161,75 @@ func (c *archiveCommand) Run(args []string) int {
 		)
 	}
 
-	for _, fileInfo := range archives {
-		archiveFilePath := path.Join(
-			cmdConfig.source,
-			fileInfo.Name(),
-		)
-
-		fmt.Printf(
-			"%sArchiving dependency: %s\n",
-			command.LogInfoPrefix,
-			archiveFilePath,
-		)
+	cfg := aws.Config{
+		Region: aws.String(cmdConfig.region),
 	}
+	opts := session.Options{
+		Config: cfg,
+	}
+	if cmdConfig.profile != "" {
+		// cfg.Credentials = credentials.NewSharedCredentials("", cmdConfig.profile)
+		opts.Profile = cmdConfig.profile
+		// opts.SharedConfigState = session.SharedConfigEnable
+	}
+	sess, err := session.NewSessionWithOptions(opts)
+	if err != nil {
+		fmt.Printf(
+	    	"%sFailed to create AWS session: %s\n",
+	    	command.LogErrorPrefix,
+	    	err,
+	    )
+	    return 1
+	}
+	svc := s3.New(sess)
+
+	fmt.Printf(
+		"%sUsing path s3://%s/%s\n",
+		command.LogInfoPrefix,
+		cmdConfig.bucket,
+		cmdConfig.s3Key,
+	)
+
+	archiveFileInfo := archives[0]
+	archiveFilePath := path.Join(
+		cmdConfig.source,
+		archiveFileInfo.Name(),
+	)
+	fmt.Printf(
+		"%sArchiving dependency: %s\n",
+		command.LogInfoPrefix,
+		archiveFilePath,
+	)
+
+	archiveFile, err := c.os.Open(archiveFilePath)
+	if err != nil {
+		fmt.Printf(
+	    	"%sFailed to open file %s: %s\n",
+	    	command.LogErrorPrefix,
+	    	archiveFilePath,
+	    	err,
+	    )
+	    return 1
+	}
+
+	uploadResult, err := svc.PutObject(&s3.PutObjectInput{
+	    Body:   archiveFile,
+	    Bucket: &cmdConfig.bucket,
+	    Key:    &cmdConfig.s3Key,
+	})
+
+	if err != nil {
+	    fmt.Printf(
+	    	"%sFailed to archive object to s3://%s/%s, %s\n",
+	    	command.LogErrorPrefix,
+	    	cmdConfig.bucket,
+	    	cmdConfig.s3Key,
+	    	err,
+	    )
+	    return 1
+	}
+
+	fmt.Println(uploadResult)
 
 	return 0
 }
