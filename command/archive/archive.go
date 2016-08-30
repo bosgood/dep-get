@@ -5,18 +5,21 @@ import (
 	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"flag"
 	"fmt"
-	"net/url"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/mitchellh/cli"
+	"io"
+	"net/url"
+	"os"
 	"path"
 )
 
 type archiveCommand struct {
 	os     fs.FileSystem
 	config archiveCommandFlags
+	s3     *s3.S3
 }
 
 type archiveCommandFlags struct {
@@ -31,7 +34,7 @@ type archiveCommandFlags struct {
 }
 
 var (
-	realOS       fs.FileSystem = &fs.OSFS{}
+	realOS fs.FileSystem = &fs.OSFS{}
 )
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
@@ -137,8 +140,40 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, error) {
 	return cmdConfig, cmdFlags, nil
 }
 
-func (c *archiveCommand) Upload() error {
+func (c *archiveCommand) InitS3() error {
+	cfg := aws.NewConfig().
+		WithRegion(c.config.region)
+
+	if c.config.profile != "" {
+		creds := credentials.NewSharedCredentials("", c.config.profile)
+		cfg = cfg.WithCredentials(creds)
+	}
+
+	sess, err := session.NewSession(cfg)
+	if err != nil {
+		return err
+	}
+	c.s3 = s3.New(sess)
 	return nil
+}
+
+func (c *archiveCommand) Upload(archiveFileInfo os.FileInfo, archiveFile io.ReadSeeker) error {
+	s3Path := path.Join(c.config.s3Key, archiveFileInfo.Name())
+	fmt.Printf(
+		"%sUploading to path: s3://%s%s\n",
+		command.LogInfoPrefix,
+		c.config.bucket,
+		s3Path,
+	)
+	_, err := c.s3.PutObject(&s3.PutObjectInput{
+		Body:          archiveFile,
+		Bucket:        aws.String(c.config.bucket),
+		Key:           aws.String(s3Path),
+		ContentLength: aws.Int64(archiveFileInfo.Size()),
+		ContentType:   aws.String("application/gzip"),
+	})
+
+	return err
 }
 
 func (c *archiveCommand) Run(args []string) int {
@@ -150,8 +185,9 @@ func (c *archiveCommand) Run(args []string) int {
 		}
 		return cli.RunResultHelp
 	}
+	c.config = cmdConfig
 
-	archives, err := c.os.ReadDir(cmdConfig.source)
+	archives, err := c.os.ReadDir(c.config.source)
 	if err != nil {
 		fmt.Printf(
 			"%sError reading archive path: %s\n",
@@ -160,35 +196,26 @@ func (c *archiveCommand) Run(args []string) int {
 		)
 	}
 
-	cfg := aws.NewConfig().
-		WithRegion(cmdConfig.region)
-
-	if cmdConfig.profile != "" {
-		creds := credentials.NewSharedCredentials("", cmdConfig.profile)
-		cfg = cfg.WithCredentials(creds)
-	}
-
-	sess, err := session.NewSession(cfg)
+	err = c.InitS3()
 	if err != nil {
 		fmt.Printf(
-			"%sFailed to create AWS session: %s\n",
+			"%sFailed to initialize AWS/S3 session: %s\n",
 			command.LogErrorPrefix,
 			err,
 		)
 		return 1
 	}
-	svc := s3.New(sess)
 
 	fmt.Printf(
 		"%sUsing path s3://%s%s\n",
 		command.LogInfoPrefix,
-		cmdConfig.bucket,
-		cmdConfig.s3Key,
+		c.config.bucket,
+		c.config.s3Key,
 	)
 
 	archiveFileInfo := archives[0]
 	archiveFilePath := path.Join(
-		cmdConfig.source,
+		c.config.source,
 		archiveFileInfo.Name(),
 	)
 	fmt.Printf(
@@ -214,33 +241,24 @@ func (c *archiveCommand) Run(args []string) int {
 		}
 	}()
 
-	s3Path := path.Join(cmdConfig.s3Key, archiveFileInfo.Name())
-	fmt.Printf(
-		"%sUploading to path: s3://%s%s\n",
-		command.LogInfoPrefix,
-		cmdConfig.bucket,
-		s3Path,
-	)
-	uploadResult, err := svc.PutObject(&s3.PutObjectInput{
-		Body:          archiveFile,
-		Bucket:        aws.String(cmdConfig.bucket),
-		Key:           aws.String(s3Path),
-		ContentLength: aws.Int64(archiveFileInfo.Size()),
-		ContentType:   aws.String("application/gzip"),
-	})
-
+	err = c.Upload(archiveFileInfo, archiveFile)
 	if err != nil {
 		fmt.Printf(
 			"%sFailed to archive object to s3://%s%s, %s\n",
 			command.LogErrorPrefix,
-			cmdConfig.bucket,
-			cmdConfig.s3Key,
+			c.config.bucket,
+			c.config.s3Key,
 			err,
 		)
 		return 1
 	}
 
-	fmt.Println(uploadResult)
+	fmt.Printf(
+		"%sUploaded object to s3://%s%s\n",
+		command.LogSuccessPrefix,
+		c.config.bucket,
+		c.config.s3Key,
+	)
 
 	return 0
 }
