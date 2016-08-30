@@ -213,51 +213,58 @@ func (c *archiveCommand) Run(args []string) int {
 		c.config.s3Key,
 	)
 
-	archiveFileInfo := archives[0]
-	archiveFilePath := path.Join(
-		c.config.source,
-		archiveFileInfo.Name(),
-	)
-	fmt.Printf(
-		"%sReading dependency file: %s\n",
-		command.LogInfoPrefix,
-		archiveFilePath,
-	)
-
-	archiveFile, err := c.os.Open(archiveFilePath)
-	if err != nil {
-		fmt.Printf(
-			"%sFailed to open file %s: %s\n",
-			command.LogErrorPrefix,
-			archiveFilePath,
-			err,
+	for _, archiveFileInfo := range archives {
+		archiveFilePath := path.Join(
+			c.config.source,
+			archiveFileInfo.Name(),
 		)
-		return 1
-	}
-
-	defer func() {
-		if ferr := archiveFile.Close(); ferr != nil && err == nil {
-			err = ferr
-		}
-	}()
-
-	err = c.Upload(archiveFileInfo, archiveFile)
-	if err != nil {
 		fmt.Printf(
-			"%sFailed to archive object to s3://%s%s, %s\n",
-			command.LogErrorPrefix,
+			"%sReading dependency file: %s\n",
+			command.LogInfoPrefix,
+			archiveFilePath,
+		)
+
+		archiveFile, err := c.os.Open(archiveFilePath)
+		if err != nil {
+			fmt.Printf(
+				"%sFailed to open file %s: %s\n",
+				command.LogErrorPrefix,
+				archiveFilePath,
+				err,
+			)
+			return 1
+		}
+
+		defer func() {
+			if ferr := archiveFile.Close(); ferr != nil && err == nil {
+				err = ferr
+			}
+		}()
+
+		err = c.Upload(archiveFileInfo, archiveFile)
+		if err != nil {
+			fmt.Printf(
+				"%sFailed to archive object to s3://%s%s, %s\n",
+				command.LogErrorPrefix,
+				c.config.bucket,
+				c.config.s3Key,
+				err,
+			)
+			return 1
+		}
+
+		fmt.Printf(
+			"%sUploaded object to s3://%s%s\n",
+			command.LogSuccessPrefix,
 			c.config.bucket,
 			c.config.s3Key,
-			err,
 		)
-		return 1
 	}
 
 	fmt.Printf(
-		"%sUploaded object to s3://%s%s\n",
+		"%sUploaded %d objects\n",
 		command.LogSuccessPrefix,
-		c.config.bucket,
-		c.config.s3Key,
+		len(archives),
 	)
 
 	return 0
