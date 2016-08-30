@@ -1,37 +1,41 @@
 package archive
 
 import (
-	"encoding/json"
+	"bitbucket.org/bosgood/dep-get/command"
+	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"flag"
 	"fmt"
-	"github.com/bosgood/dep-get/command"
-	"github.com/bosgood/dep-get/lib/fs"
-	"github.com/bosgood/dep-get/nodejs"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/mitchellh/cli"
 	"io"
-	"net/http"
 	"net/url"
+	"os"
 	"path"
-	"regexp"
-	"strings"
 )
 
-var realOS fs.FileSystem = &fs.OSFS{}
-
 type archiveCommand struct {
-	npmShrinkwrap nodejs.NPMShrinkwrap
-	os            fs.FileSystem
-	config        archiveCommandFlags
+	os     fs.FileSystem
+	config archiveCommandFlags
+	s3     *s3.S3
 }
 
 type archiveCommandFlags struct {
 	command.BaseFlags
-	platform     string
-	source       string
-	destination  string
-	whitelistStr string
-	whitelist    *regexp.Regexp
+	platform string
+	source   string
+	region   string
+	profile  string
+	s3URL    string
+	bucket   string
+	s3Key    string
 }
+
+var (
+	realOS fs.FileSystem = &fs.OSFS{}
+)
 
 func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
 	cmd := &archiveCommand{
@@ -41,14 +45,13 @@ func newArchiveCommandWithFS(os fs.FileSystem) (cli.Command, error) {
 }
 
 // NewArchiveCommand is used to generate a command object
-// which orchestrates package dependency discovery
-// and archiving to S3
+// which downloads dependencies from S3 and installs them
 func NewArchiveCommand() (cli.Command, error) {
 	return newArchiveCommandWithFS(realOS)
 }
 
 func (c *archiveCommand) Synopsis() string {
-	return "Archives application dependencies"
+	return "Installs archived application dependencies"
 }
 
 func (c *archiveCommand) Help() string {
@@ -57,286 +60,211 @@ func (c *archiveCommand) Help() string {
 	return ""
 }
 
-func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, int) {
+func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, error) {
 	var cmdConfig archiveCommandFlags
 
-	cmdFlags := flag.NewFlagSet("archive", flag.ExitOnError)
-	cmdFlags.BoolVar(&cmdConfig.Help, "help", false,
-		"show command help")
+	cmdFlags := flag.NewFlagSet("install", flag.ExitOnError)
+	cmdFlags.BoolVar(&cmdConfig.Help, "help", false, "show command help")
 	cmdFlags.StringVar(&cmdConfig.platform, "platform", "", "platform type (allowed: nodejs|python)")
 	cmdFlags.StringVar(&cmdConfig.source, "source", "", "project directory (default: .)")
-	cmdFlags.StringVar(&cmdConfig.destination, "destination", "", "dependencies download destination")
-	cmdFlags.StringVar(&cmdConfig.whitelistStr, "whitelist", "", "dependency name whitelist regexp")
+	cmdFlags.StringVar(&cmdConfig.profile, "profile", "", "AWS credentials profile (default: default)")
+	cmdFlags.StringVar(&cmdConfig.region, "region", "", "AWS region")
+	cmdFlags.StringVar(&cmdConfig.s3URL, "path", "", "S3 upload path")
 
 	if err := cmdFlags.Parse(args); err != nil {
-		fmt.Printf(
-			"%s%s: %s\n",
+		errMsg := fmt.Sprintf(
+			"%sError parsing args: %s\n",
 			command.LogErrorPrefix,
-			"Error parsing args",
 			err,
 		)
-		return cmdConfig, cmdFlags, 1
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
 	if cmdConfig.Help {
-		return cmdConfig, cmdFlags, cli.RunResultHelp
+		return cmdConfig, cmdFlags, &command.ConfigError{}
 	}
 
-	// All missing required arguments checks go here
+	// All missing required argument checks go here
 	var missingArg string
 	if cmdConfig.platform == "" {
 		missingArg = "platform"
-	} else if cmdConfig.destination == "" {
-		missingArg = "destination"
+	}
+
+	if cmdConfig.region == "" {
+		missingArg = "region"
+	}
+
+	if cmdConfig.s3URL == "" {
+		missingArg = "path"
 	}
 
 	if missingArg != "" {
-		fmt.Printf(
-			"%s%s: %s\n",
+		errMsg := fmt.Sprintf(
+			"%sMissing required argument: %s\n",
 			command.LogErrorPrefix,
-			"Missing required argument",
 			missingArg,
 		)
-		return cmdConfig, cmdFlags, cli.RunResultHelp
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
 	if cmdConfig.platform != "nodejs" {
-		fmt.Printf(
-			"%s%s\n",
+		errMsg := fmt.Sprintf(
+			"%sOnly nodejs supported at the moment\n",
 			command.LogErrorPrefix,
-			"Only nodejs supported at the moment",
 		)
-		return cmdConfig, cmdFlags, 1
-	}
-
-	// Additional command parsing goes here
-	if cmdConfig.whitelistStr != "" {
-		rgx, err := regexp.Compile(cmdConfig.whitelistStr)
-		if err != nil {
-			fmt.Printf(
-				"%sMalformed dependency whitelist regexp: %s\n",
-				command.LogErrorPrefix,
-				cmdConfig.whitelistStr,
-			)
-			return cmdConfig, cmdFlags, 1
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
 		}
-		cmdConfig.whitelist = rgx
 	}
 
-	return cmdConfig, cmdFlags, 0
-}
-
-func (c *archiveCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
-	var npmShrinkwrap nodejs.NPMShrinkwrap
-
-	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
-	packageFileContents, err := c.os.ReadFile(packageFilePath)
+	// Parameter validation goes here
+	s3URL, err := url.Parse(cmdConfig.s3URL)
 	if err != nil {
-		fmt.Printf(
-			"%s%s: %s\n",
+		errMsg := fmt.Sprintf(
+			"%sInvalid S3 path: %s\n",
 			command.LogErrorPrefix,
-			"Can't open the dependencies file",
-			err,
+			cmdConfig.s3URL,
 		)
-		return npmShrinkwrap, err
+		return cmdConfig, cmdFlags, &command.ConfigError{
+			Explanation: errMsg,
+		}
 	}
 
-	err = json.Unmarshal(packageFileContents, &npmShrinkwrap)
-	if err != nil {
-		fmt.Printf(
-			"%s%s: %s\n",
-			command.LogErrorPrefix,
-			"Failed to decode the dependencies file file",
-			err,
-		)
-		return npmShrinkwrap, err
-	}
+	cmdConfig.bucket = s3URL.Host
+	cmdConfig.s3Key = s3URL.Path
 
-	return npmShrinkwrap, nil
+	return cmdConfig, cmdFlags, nil
 }
 
-var repoPattern = regexp.MustCompile(`^/.+/.+\.git$`)
+func (c *archiveCommand) InitS3() error {
+	cfg := aws.NewConfig().
+		WithRegion(c.config.region)
 
-func (c *archiveCommand) resolveDependencyURL(depURL string) (string, error) {
-	urlObj, err := url.Parse(depURL)
+	if c.config.profile != "" {
+		creds := credentials.NewSharedCredentials("", c.config.profile)
+		cfg = cfg.WithCredentials(creds)
+	}
+
+	sess, err := session.NewSession(cfg)
 	if err != nil {
-		return depURL, nil
+		return err
 	}
-
-	// Plain old HTTP(s) URLs
-	scheme := urlObj.Scheme
-	if scheme == "http" || scheme == "https" {
-		return depURL, nil
-	}
-
-	// git URLs whitelisted by site
-	if scheme == "git" {
-		if !repoPattern.MatchString(urlObj.Path) {
-			return depURL, fmt.Errorf("Unknown git URL path format: %s", urlObj.Path)
-		}
-		repoParts := strings.Split(strings.Split(urlObj.Path, ".")[0], "/")[1:]
-		owner := repoParts[0]
-		repo := repoParts[1]
-
-		commit := urlObj.Fragment
-		if commit == "" {
-			commit = "master"
-		}
-
-		if urlObj.Host == "github.com" {
-			httpURL := fmt.Sprintf(
-				"https://github.com/%s/%s/archive/%s.tgz",
-				owner,
-				repo,
-				commit,
-			)
-			return httpURL, nil
-		} else if urlObj.Host == "bitbucket.com" {
-			httpURL := fmt.Sprintf(
-				"https://bitbucket.org/%s/%s/get/%s.tgz",
-				owner,
-				repo,
-				commit,
-			)
-			return httpURL, nil
-		}
-	}
-
-	return depURL, fmt.Errorf("Unknown URL scheme: %s", urlObj.Scheme)
+	c.s3 = s3.New(sess)
+	return nil
 }
 
-func (c *archiveCommand) fetchDependency(dep nodejs.NodeDependency) (string, error) {
-	depURL, err := c.resolveDependencyURL(dep.PackageURL)
-	if err != nil {
-		return "", err
-	}
+func (c *archiveCommand) Upload(archiveFileInfo os.FileInfo, archiveFile io.ReadSeeker) error {
+	s3Path := path.Join(c.config.s3Key, archiveFileInfo.Name())
+	fmt.Printf(
+		"%sUploading to path: s3://%s%s\n",
+		command.LogInfoPrefix,
+		c.config.bucket,
+		s3Path,
+	)
+	_, err := c.s3.PutObject(&s3.PutObjectInput{
+		Body:          archiveFile,
+		Bucket:        aws.String(c.config.bucket),
+		Key:           aws.String(s3Path),
+		ContentLength: aws.Int64(archiveFileInfo.Size()),
+		ContentType:   aws.String("application/gzip"),
+	})
 
-	resp, err := http.Get(depURL)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		if rerr := resp.Body.Close(); rerr != nil && err == nil {
-			err = rerr
-		}
-	}()
-
-	outFilePath := path.Join(c.config.destination, dep.GetCanonicalName() + ".tgz")
-	outFile, err := c.os.Create(outFilePath)
-	defer func() {
-		if ferr := outFile.Close(); ferr != nil && err == nil {
-			err = ferr
-		}
-	}()
-
-	if err != nil {
-		return "", err
-	}
-	_, err = io.Copy(outFile, resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return outFilePath, err
-}
-
-func (c *archiveCommand) fetchDependencies(deps []nodejs.NodeDependency) ([]string, error) {
-	numDeps := len(deps)
-
-	var outFilePaths []string
-	for i, dep := range deps {
-		fmt.Printf(
-			"%s(%d/%d) Downloading %s (%s)\n",
-			command.LogInfoPrefix,
-			i, numDeps,
-			dep.GetCanonicalName(),
-			dep.PackageURL,
-		)
-		outFilePath, err := c.fetchDependency(dep)
-		if err != nil {
-			return outFilePaths, err
-		}
-		outFilePaths = append(outFilePaths, outFilePath)
-	}
-
-	return outFilePaths, nil
+	return err
 }
 
 func (c *archiveCommand) Run(args []string) int {
-	cmdConfig, _, ret := getConfig(args)
-	if ret != 0 {
-		return ret
+	cmdConfig, _, err := getConfig(args)
+	if err != nil {
+		errMsg := err.Error()
+		if errMsg != "" {
+			fmt.Print(err.Error())
+		}
+		return cli.RunResultHelp
 	}
-
 	c.config = cmdConfig
 
-	var dirPath string
-	if cmdConfig.source == "" {
-		cwd, err := c.os.Getwd()
+	archives, err := c.os.ReadDir(c.config.source)
+	if err != nil {
+		fmt.Printf(
+			"%sError reading archive path: %s\n",
+			command.LogErrorPrefix,
+			err,
+		)
+	}
+
+	err = c.InitS3()
+	if err != nil {
+		fmt.Printf(
+			"%sFailed to initialize AWS/S3 session: %s\n",
+			command.LogErrorPrefix,
+			err,
+		)
+		return 1
+	}
+
+	fmt.Printf(
+		"%sUsing path s3://%s%s\n",
+		command.LogInfoPrefix,
+		c.config.bucket,
+		c.config.s3Key,
+	)
+
+	for _, archiveFileInfo := range archives {
+		archiveFilePath := path.Join(
+			c.config.source,
+			archiveFileInfo.Name(),
+		)
+		fmt.Printf(
+			"%sReading dependency file: %s\n",
+			command.LogInfoPrefix,
+			archiveFilePath,
+		)
+
+		archiveFile, err := c.os.Open(archiveFilePath)
 		if err != nil {
 			fmt.Printf(
-				"%s%s: %s\n",
+				"%sFailed to open file %s: %s\n",
 				command.LogErrorPrefix,
-				"Can't read current directory",
+				archiveFilePath,
 				err,
 			)
 			return 1
 		}
-		dirPath = cwd
-	} else {
-		dirPath = cmdConfig.source
-	}
 
-	npmShrinkwrap, err := c.readDependencies(dirPath)
-	if err != nil {
-		return 1
-	}
-
-	c.npmShrinkwrap = npmShrinkwrap
-
-	allDeps := nodejs.CollectDependencies(npmShrinkwrap)
-	var deps []nodejs.NodeDependency
-
-	// Filter deps according to whitelist if present
-	if cmdConfig.whitelistStr == "" {
-		deps = allDeps
-	} else {
-		for _, dep := range allDeps {
-			if cmdConfig.whitelist.MatchString(dep.Name) {
-				deps = append(deps, dep)
+		defer func() {
+			if ferr := archiveFile.Close(); ferr != nil && err == nil {
+				err = ferr
 			}
+		}()
+
+		err = c.Upload(archiveFileInfo, archiveFile)
+		if err != nil {
+			fmt.Printf(
+				"%sFailed to archive object to s3://%s%s, %s\n",
+				command.LogErrorPrefix,
+				c.config.bucket,
+				c.config.s3Key,
+				err,
+			)
+			return 1
 		}
-	}
 
-	fmt.Printf(
-		"%sFound %d matching dependencies.\n",
-		command.LogSuccessPrefix,
-		len(deps),
-	)
-
-	fetchedDeps, err := c.fetchDependencies(deps)
-	if err != nil {
 		fmt.Printf(
-			"%s%s: %s",
-			command.LogErrorPrefix,
-			"Error fetching dependencies",
-			err,
-		)
-		return 1
-	}
-
-	for _, dep := range fetchedDeps {
-		fmt.Printf(
-			"%sFetched: %s\n",
-			command.LogInfoPrefix,
-			dep,
+			"%sUploaded object to s3://%s%s\n",
+			command.LogSuccessPrefix,
+			c.config.bucket,
+			c.config.s3Key,
 		)
 	}
 
 	fmt.Printf(
-		"%sFetched %d dependencies.\n",
+		"%sUploaded %d objects\n",
 		command.LogSuccessPrefix,
-		len(deps),
+		len(archives),
 	)
 
 	return 0

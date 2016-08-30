@@ -1,18 +1,50 @@
-hash: 7594947f0c4161b500b5eab64b2c9199a5719f09263f67b94cedb19b459f396f
-updated: 2016-07-09T15:45:50.47274584-04:00
+hash: bdd5587322fe5c671e4de51e3b12b64329ee76c70d8ad07860124785308c1558
+updated: 2016-08-30T12:20:02.901951111-04:00
 imports:
 - name: github.com/armon/go-radix
   version: 4239b77079c7b5d1243b7b4736304ce8ddb6f0f2
+- name: github.com/aws/aws-sdk-go
+  version: e39222bf4583af667250cfd83a41388937ba56d4
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/awsutil
+  - aws/client
+  - aws/client/metadata
+  - aws/corehandlers
+  - aws/credentials
+  - aws/credentials/ec2rolecreds
+  - aws/credentials/endpointcreds
+  - aws/credentials/stscreds
+  - aws/defaults
+  - aws/ec2metadata
+  - aws/request
+  - aws/session
+  - aws/signer/v4
+  - private/endpoints
+  - private/protocol
+  - private/protocol/query
+  - private/protocol/query/queryutil
+  - private/protocol/rest
+  - private/protocol/restxml
+  - private/protocol/xml/xmlutil
+  - private/waiter
+  - service/s3
+  - service/sts
 - name: github.com/bgentry/speakeasy
-  version: e1439544d8ecd0f3e9373a636d447668096a8f81
+  version: a1ccbf2c40dfc8ce514b5c5c6e6d1429ea6880da
+- name: github.com/go-ini/ini
+  version: 6e4869b434bd001f6983749881c7ead3545887d8
+- name: github.com/jmespath/go-jmespath
+  version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
 - name: github.com/mattn/go-isatty
-  version: 56b76bdf51f7708750eac80fa38b952bb9f32639
+  version: 66b8e73f3f5cda9f96b69efd03dd3d7fc4a5cdb8
 - name: github.com/mitchellh/cli
   version: 168daae10d6ff81b8b1201b0a4c9607d7e9b82e3
 - name: github.com/ttacon/chalk
   version: 76b3c8b611dea8f83e49e9ce81fc2b189e0ef3d2
 - name: golang.org/x/sys
-  version: a408501be4d17ee978c04a618e7a1b22af058c0e
+  version: a646d33e2ee3172a661fc09bca23bb4889a41bc8
   subpackages:
   - unix
 testImports: []

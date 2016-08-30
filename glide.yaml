@@ -1,6 +1,8 @@
-package: .
+package: bitbucket.org/bosgood/dep-get
 import:
 - package: github.com/ttacon/chalk
   version: ^0.1.0
 - package: github.com/mitchellh/cli
   version: 168daae
+- package: github.com/aws/aws-sdk-go
+  version: e39222bf4583af667250cfd83a41388937ba56d4
