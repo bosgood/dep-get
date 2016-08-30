@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/mitchellh/cli"
@@ -160,27 +161,15 @@ func (c *archiveCommand) Run(args []string) int {
 		)
 	}
 
-	cfg := aws.Config{
-		Region: aws.String(cmdConfig.region),
-	}
-	opts := session.Options{
-		Config: cfg,
-	}
+	cfg := aws.NewConfig().
+		WithRegion(cmdConfig.region)
+
 	if cmdConfig.profile != "" {
-		// cfg.Credentials = credentials.NewSharedCredentials("", cmdConfig.profile)
-		opts.Profile = cmdConfig.profile
-		// opts.SharedConfigState = session.SharedConfigEnable
+		creds := credentials.NewSharedCredentials("", cmdConfig.profile)
+		cfg = cfg.WithCredentials(creds)
 	}
-	sess, err := session.NewSessionWithOptions(opts)
-	if err != nil {
-		fmt.Printf(
-	    	"%sFailed to create AWS session: %s\n",
-	    	command.LogErrorPrefix,
-	    	err,
-	    )
-	    return 1
-	}
-	svc := s3.New(sess)
+
+	svc := s3.New(session.New(), cfg)
 
 	fmt.Printf(
 		"%sUsing path s3://%s/%s\n",
