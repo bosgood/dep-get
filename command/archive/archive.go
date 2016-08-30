@@ -169,7 +169,16 @@ func (c *archiveCommand) Run(args []string) int {
 		cfg = cfg.WithCredentials(creds)
 	}
 
-	svc := s3.New(session.New(), cfg)
+	sess, err := session.NewSession(cfg)
+	if err != nil {
+	    fmt.Printf(
+	    	"%sFailed to create AWS session: %s\n",
+	    	command.LogErrorPrefix,
+	    	err,
+	    )
+	    return 1
+	}
+	svc := s3.New(sess)
 
 	fmt.Printf(
 		"%sUsing path s3://%s/%s\n",
