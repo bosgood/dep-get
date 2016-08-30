@@ -51,7 +51,7 @@ func NewArchiveCommand() (cli.Command, error) {
 }
 
 func (c *archiveCommand) Synopsis() string {
-	return "Installs archived application dependencies"
+	return "Archives application dependencies to S3"
 }
 
 func (c *archiveCommand) Help() string {
@@ -63,7 +63,7 @@ func (c *archiveCommand) Help() string {
 func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, error) {
 	var cmdConfig archiveCommandFlags
 
-	cmdFlags := flag.NewFlagSet("install", flag.ExitOnError)
+	cmdFlags := flag.NewFlagSet("archive", flag.ExitOnError)
 	cmdFlags.BoolVar(&cmdConfig.Help, "help", false, "show command help")
 	cmdFlags.StringVar(&cmdConfig.platform, "platform", "", "platform type (allowed: nodejs|python)")
 	cmdFlags.StringVar(&cmdConfig.source, "source", "", "project directory (default: .)")
