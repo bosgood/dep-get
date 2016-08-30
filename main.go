@@ -4,6 +4,7 @@ import (
 	"bitbucket.org/bosgood/dep-get/command/archive"
 	"bitbucket.org/bosgood/dep-get/command/fetch"
 	"bitbucket.org/bosgood/dep-get/command/install"
+	"bitbucket.org/bosgood/dep-get/command/retrieve"
 	"github.com/mitchellh/cli"
 	"log"
 	"os"
@@ -16,6 +17,7 @@ func main() {
 		"fetch":   fetch.NewFetchCommand,
 		"archive": archive.NewArchiveCommand,
 		"install": install.NewInstallCommand,
+		"retrieve": retrieve.NewRetrieveCommand,
 	}
 
 	exitStatus, err := c.Run()
