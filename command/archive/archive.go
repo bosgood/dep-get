@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"regexp"
 	"github.com/aws/aws-sdk-go/aws"
-	// "github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/mitchellh/cli"
@@ -212,10 +211,18 @@ func (c *archiveCommand) Run(args []string) int {
 	    return 1
 	}
 
+	defer func() {
+	    if ferr := archiveFile.Close(); ferr != nil && err == nil {
+	        err = ferr
+	    }
+	}()
+
 	uploadResult, err := svc.PutObject(&s3.PutObjectInput{
 	    Body:   archiveFile,
-	    Bucket: &cmdConfig.bucket,
-	    Key:    &cmdConfig.s3Key,
+	    Bucket: aws.String(cmdConfig.bucket),
+	    Key:    aws.String(cmdConfig.s3Key),
+	    ContentLength: aws.Int64(archiveFileInfo.Size()),
+	    ContentType: aws.String("application/gzip"),
 	})
 
 	if err != nil {
