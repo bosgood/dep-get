@@ -213,52 +213,78 @@ func (c *archiveCommand) Run(args []string) int {
 		c.config.s3Key,
 	)
 
+	errors := make(chan error)
+	successes := make(chan string)
+
+	archives = archives[:1]
+
 	for _, archiveFileInfo := range archives {
-		archiveFilePath := path.Join(
-			c.config.source,
-			archiveFileInfo.Name(),
-		)
-		fmt.Printf(
-			"%sReading dependency file: %s\n",
-			command.LogInfoPrefix,
-			archiveFilePath,
-		)
-
-		archiveFile, err := c.os.Open(archiveFilePath)
-		if err != nil {
-			fmt.Printf(
-				"%sFailed to open file %s: %s\n",
-				command.LogErrorPrefix,
-				archiveFilePath,
-				err,
+		go func() {
+			archiveFilePath := path.Join(
+				c.config.source,
+				archiveFileInfo.Name(),
 			)
-			return 1
-		}
-
-		defer func() {
-			if ferr := archiveFile.Close(); ferr != nil && err == nil {
-				err = ferr
-			}
-		}()
-
-		err = c.Upload(archiveFileInfo, archiveFile)
-		if err != nil {
 			fmt.Printf(
-				"%sFailed to archive object to s3://%s%s, %s\n",
-				command.LogErrorPrefix,
+				"%sReading dependency file: %s\n",
+				command.LogInfoPrefix,
+				archiveFilePath,
+			)
+
+			archiveFile, err := c.os.Open(archiveFilePath)
+			if err != nil {
+				fmt.Printf(
+					"%sFailed to open file %s: %s\n",
+					command.LogErrorPrefix,
+					archiveFilePath,
+					err,
+				)
+				errors <- err
+				return
+			}
+
+			defer func() {
+				if ferr := archiveFile.Close(); ferr != nil && err == nil {
+					err = ferr
+				}
+			}()
+
+			err = c.Upload(archiveFileInfo, archiveFile)
+			if err != nil {
+				fmt.Printf(
+					"%sFailed to archive object to s3://%s%s, %s\n",
+					command.LogErrorPrefix,
+					c.config.bucket,
+					c.config.s3Key,
+					err,
+				)
+				errors <- err
+				return
+			}
+
+			fmt.Printf(
+				"%sUploaded object to s3://%s%s\n",
+				command.LogSuccessPrefix,
 				c.config.bucket,
 				c.config.s3Key,
-				err,
 			)
+
+			successes <- archiveFileInfo.Name()
+		}()
+	}
+
+	remainingCount := len(archives)
+
+	for {
+		select {
+		case <-errors:
 			return 1
+		case <-successes:
+			remainingCount--
 		}
 
-		fmt.Printf(
-			"%sUploaded object to s3://%s%s\n",
-			command.LogSuccessPrefix,
-			c.config.bucket,
-			c.config.s3Key,
-		)
+		if remainingCount == 0 {
+			break
+		}
 	}
 
 	fmt.Printf(
