@@ -4,7 +4,6 @@ import (
 	"bitbucket.org/bosgood/dep-get/command"
 	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"bitbucket.org/bosgood/dep-get/nodejs"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/mitchellh/cli"
@@ -132,35 +131,6 @@ func getConfig(args []string) (fetchCommandFlags, *flag.FlagSet, error) {
 	}
 
 	return cmdConfig, cmdFlags, nil
-}
-
-func (c *fetchCommand) readDependencies(dirPath string) (nodejs.NPMShrinkwrap, error) {
-	var npmShrinkwrap nodejs.NPMShrinkwrap
-
-	packageFilePath := path.Join(dirPath, nodejs.DependenciesFileName)
-	packageFileContents, err := c.os.ReadFile(packageFilePath)
-	if err != nil {
-		fmt.Printf(
-			"%s%s: %s\n",
-			command.LogErrorPrefix,
-			"Can't open the dependencies file",
-			err,
-		)
-		return npmShrinkwrap, err
-	}
-
-	err = json.Unmarshal(packageFileContents, &npmShrinkwrap)
-	if err != nil {
-		fmt.Printf(
-			"%s%s: %s\n",
-			command.LogErrorPrefix,
-			"Failed to decode the dependencies file file",
-			err,
-		)
-		return npmShrinkwrap, err
-	}
-
-	return npmShrinkwrap, nil
 }
 
 var repoPattern = regexp.MustCompile(`^/.+/.+\.git$`)
@@ -299,7 +269,7 @@ func (c *fetchCommand) Run(args []string) int {
 		dirPath = cmdConfig.source
 	}
 
-	npmShrinkwrap, err := c.readDependencies(dirPath)
+	npmShrinkwrap, err := nodejs.ReadDependencies(c.os, dirPath)
 	if err != nil {
 		return 1
 	}

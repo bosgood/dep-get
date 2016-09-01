@@ -1,7 +1,11 @@
 package nodejs
 
 import (
+	"bitbucket.org/bosgood/dep-get/command"
+	"bitbucket.org/bosgood/dep-get/lib/fs"
 	"fmt"
+	"encoding/json"
+	"path"
 )
 
 // DependenciesFileName is the name of the nodejs dependencies lock file
@@ -72,4 +76,34 @@ func CollectDependencies(npmShrinkwrap NPMShrinkwrap) []NodeDependency {
 	}
 
 	return dedupedDeps
+}
+
+// ReadDependencies reads in an npm-shrinkwrap.json file from disk
+func ReadDependencies(os fs.FileSystem, dirPath string) (NPMShrinkwrap, error) {
+	var npmShrinkwrap NPMShrinkwrap
+
+	packageFilePath := path.Join(dirPath, DependenciesFileName)
+	packageFileContents, err := os.ReadFile(packageFilePath)
+	if err != nil {
+		fmt.Printf(
+			"%s%s: %s\n",
+			command.LogErrorPrefix,
+			"Can't open the dependencies file",
+			err,
+		)
+		return npmShrinkwrap, err
+	}
+
+	err = json.Unmarshal(packageFileContents, &npmShrinkwrap)
+	if err != nil {
+		fmt.Printf(
+			"%s%s: %s\n",
+			command.LogErrorPrefix,
+			"Failed to decode the dependencies file",
+			err,
+		)
+		return npmShrinkwrap, err
+	}
+
+	return npmShrinkwrap, nil
 }
