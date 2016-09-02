@@ -243,17 +243,17 @@ func (c *retrieveCommand) Run(args []string) int {
 		_, err := c.Download(depInfo.GetCanonicalName()+".tgz")
 		if err != nil {
 			fmt.Printf(
-				"%sError downloading dependency %s: %s",
+				"%sError downloading dependency %s: %s\n",
 				command.LogErrorPrefix,
-				depInfo.Name,
+				depInfo.GetCanonicalName(),
 				err,
 			)
 			return 1
 		}
 		fmt.Printf(
-			"%sDownloaded dependency: %s",
+			"%sDownloaded dependency: %s\n",
 			command.LogSuccessPrefix,
-			depInfo.Name,
+			depInfo.GetCanonicalName(),
 		)
 	}
 
