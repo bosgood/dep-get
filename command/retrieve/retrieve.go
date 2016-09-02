@@ -24,16 +24,17 @@ type retrieveCommand struct {
 
 type retrieveCommandFlags struct {
 	command.BaseFlags
-	platform     string
-	source       string
-	destination  string
-	region       string
-	profile      string
-	s3URL        string
-	bucket       string
-	s3Key        string
-	whitelistStr string
-	whitelist    *regexp.Regexp
+	platform      string
+	source        string
+	destination   string
+	region        string
+	profile       string
+	s3URL         string
+	bucket        string
+	s3Key         string
+	whitelistStr  string
+	whitelist     *regexp.Regexp
+	maxNumWorkers uint
 }
 
 var (
@@ -75,6 +76,7 @@ func getConfig(args []string) (retrieveCommandFlags, *flag.FlagSet, error) {
 	cmdFlags.StringVar(&cmdConfig.region, "region", "", "AWS region")
 	cmdFlags.StringVar(&cmdConfig.s3URL, "path", "", "S3 storage path")
 	cmdFlags.StringVar(&cmdConfig.whitelistStr, "whitelist", "", "dependency name whitelist regexp")
+	cmdFlags.UintVar(&cmdConfig.maxNumWorkers, "concurrency", 5, "Maximum number of workers (default: 5)")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		errMsg := fmt.Sprintf(
@@ -239,22 +241,59 @@ func (c *retrieveCommand) Run(args []string) int {
 		return 1
 	}
 
-	for _, depInfo := range deps {
-		_, err := c.Download(depInfo.GetCanonicalName()+".tgz")
-		if err != nil {
-			fmt.Printf(
-				"%sError downloading dependency %s: %s\n",
-				command.LogErrorPrefix,
-				depInfo.GetCanonicalName(),
-				err,
-			)
+	remainingCount := len(deps)
+	errors := make(chan error)
+	successes := make(chan string)
+	todo := make(chan nodejs.NodeDependency, remainingCount)
+
+	// Enqueue all the files to be downloaded
+	for _, dep := range deps {
+		todo <- dep
+	}
+
+	fmt.Printf(
+		"%sStarting %d workers\n",
+		command.LogInfoPrefix,
+		c.config.maxNumWorkers,
+	)
+
+	var i uint
+	for i = 0; i < c.config.maxNumWorkers; i++ {
+		go func() {
+			for {
+				depInfo := <-todo
+				_, err := c.Download(depInfo.GetCanonicalName() + ".tgz")
+				if err != nil {
+					fmt.Printf(
+						"%sError downloading dependency %s: %s\n",
+						command.LogErrorPrefix,
+						depInfo.GetCanonicalName(),
+						err,
+					)
+					errors <- err
+				} else {
+					fmt.Printf(
+						"%sDownloaded dependency: %s\n",
+						command.LogSuccessPrefix,
+						depInfo.GetCanonicalName(),
+					)
+					successes <- depInfo.GetCanonicalName()
+				}
+			}
+		}()
+	}
+
+	for {
+		select {
+		case <-errors:
 			return 1
+		case <-successes:
+			remainingCount--
 		}
-		fmt.Printf(
-			"%sDownloaded dependency: %s\n",
-			command.LogSuccessPrefix,
-			depInfo.GetCanonicalName(),
-		)
+
+		if remainingCount == 0 {
+			break
+		}
 	}
 
 	return 0
