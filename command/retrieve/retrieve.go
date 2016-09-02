@@ -35,6 +35,7 @@ type retrieveCommandFlags struct {
 	whitelistStr  string
 	whitelist     *regexp.Regexp
 	maxNumWorkers uint
+	maxNumRetries uint
 }
 
 var (
@@ -77,6 +78,7 @@ func getConfig(args []string) (retrieveCommandFlags, *flag.FlagSet, error) {
 	cmdFlags.StringVar(&cmdConfig.s3URL, "path", "", "S3 storage path")
 	cmdFlags.StringVar(&cmdConfig.whitelistStr, "whitelist", "", "dependency name whitelist regexp")
 	cmdFlags.UintVar(&cmdConfig.maxNumWorkers, "concurrency", 5, "Maximum number of workers (default: 5)")
+	cmdFlags.UintVar(&cmdConfig.maxNumRetries, "maxRetries", 3, "Maximum number of times to retry a download (default: 3)")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		errMsg := fmt.Sprintf(
@@ -195,6 +197,11 @@ func (c *retrieveCommand) Download(archiveFileName string) (*s3.GetObjectOutput,
 	return out, err
 }
 
+type retryDownloadInfo struct {
+	attemptNumber uint
+	download      nodejs.NodeDependency
+}
+
 func (c *retrieveCommand) Run(args []string) int {
 	cmdConfig, _, err := getConfig(args)
 	if err != nil {
@@ -245,6 +252,7 @@ func (c *retrieveCommand) Run(args []string) int {
 	errors := make(chan error)
 	successes := make(chan string)
 	todo := make(chan nodejs.NodeDependency, remainingCount)
+	retries := make(chan retryDownloadInfo)
 
 	// Enqueue all the files to be downloaded
 	for _, dep := range deps {
@@ -289,6 +297,18 @@ func (c *retrieveCommand) Run(args []string) int {
 			return 1
 		case <-successes:
 			remainingCount--
+		case retry := <-retries:
+			if retry.attemptNumber == c.config.maxNumRetries - 1 {
+				fmt.Printf(
+					"%sExceeded maximum number of retries (%d) while downloading %s.\n",
+					command.LogErrorPrefix,
+					c.config.maxNumRetries,
+					retry.download.GetCanonicalName(),
+				)
+				return 1
+			} else {
+
+			}
 		}
 
 		if remainingCount == 0 {
