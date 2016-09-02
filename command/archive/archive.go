@@ -24,13 +24,14 @@ type archiveCommand struct {
 
 type archiveCommandFlags struct {
 	command.BaseFlags
-	platform string
-	source   string
-	region   string
-	profile  string
-	s3URL    string
-	bucket   string
-	s3Key    string
+	platform      string
+	source        string
+	region        string
+	profile       string
+	s3URL         string
+	bucket        string
+	s3Key         string
+	maxNumWorkers uint
 }
 
 var (
@@ -70,6 +71,7 @@ func getConfig(args []string) (archiveCommandFlags, *flag.FlagSet, error) {
 	cmdFlags.StringVar(&cmdConfig.profile, "profile", "", "AWS credentials profile (default: default)")
 	cmdFlags.StringVar(&cmdConfig.region, "region", "", "AWS region")
 	cmdFlags.StringVar(&cmdConfig.s3URL, "path", "", "S3 upload path")
+	cmdFlags.UintVar(&cmdConfig.maxNumWorkers, "concurrency", 5, "Maximum number of workers (default: 5)")
 
 	if err := cmdFlags.Parse(args); err != nil {
 		errMsg := fmt.Sprintf(
@@ -157,7 +159,7 @@ func (c *archiveCommand) InitS3() error {
 	return nil
 }
 
-func (c *archiveCommand) Upload(archiveFileInfo os.FileInfo, archiveFile io.ReadSeeker) error {
+func (c *archiveCommand) uploadToS3(archiveFileInfo os.FileInfo, archiveFile io.ReadSeeker) error {
 	s3Path := path.Join(c.config.s3Key, archiveFileInfo.Name())
 	fmt.Printf(
 		"%sUploading to path: s3://%s%s\n",
@@ -174,6 +176,57 @@ func (c *archiveCommand) Upload(archiveFileInfo os.FileInfo, archiveFile io.Read
 	})
 
 	return err
+}
+
+func (c *archiveCommand) Upload(fi os.FileInfo) error {
+	archiveFilePath := path.Join(
+		c.config.source,
+		fi.Name(),
+	)
+	fmt.Printf(
+		"%sReading dependency file: %s\n",
+		command.LogInfoPrefix,
+		archiveFilePath,
+	)
+
+	archiveFile, err := c.os.Open(archiveFilePath)
+	if err != nil {
+		fmt.Printf(
+			"%sFailed to open file %s: %s\n",
+			command.LogErrorPrefix,
+			archiveFilePath,
+			err,
+		)
+		return err
+	}
+
+	defer func() {
+		if ferr := archiveFile.Close(); ferr != nil && err == nil {
+			err = ferr
+		}
+	}()
+
+	err = c.uploadToS3(fi, archiveFile)
+	if err != nil {
+		fmt.Printf(
+			"%sFailed to archive object to s3://%s%s, %s\n",
+			command.LogErrorPrefix,
+			c.config.bucket,
+			c.config.s3Key,
+			err,
+		)
+		return err
+	}
+
+	fmt.Printf(
+		"%sUploaded object to s3://%s%s%s\n",
+		command.LogSuccessPrefix,
+		c.config.bucket,
+		c.config.s3Key,
+		fi.Name(),
+	)
+
+	return nil
 }
 
 func (c *archiveCommand) Run(args []string) int {
@@ -213,66 +266,36 @@ func (c *archiveCommand) Run(args []string) int {
 		c.config.s3Key,
 	)
 
+	remainingCount := len(archives)
 	errors := make(chan error)
 	successes := make(chan string)
+	todo := make(chan os.FileInfo, remainingCount)
 
-	archives = archives[:1]
-
+	// Enqueue all the files to be uploaded
 	for _, archiveFileInfo := range archives {
-		go func() {
-			archiveFilePath := path.Join(
-				c.config.source,
-				archiveFileInfo.Name(),
-			)
-			fmt.Printf(
-				"%sReading dependency file: %s\n",
-				command.LogInfoPrefix,
-				archiveFilePath,
-			)
-
-			archiveFile, err := c.os.Open(archiveFilePath)
-			if err != nil {
-				fmt.Printf(
-					"%sFailed to open file %s: %s\n",
-					command.LogErrorPrefix,
-					archiveFilePath,
-					err,
-				)
-				errors <- err
-				return
-			}
-
-			defer func() {
-				if ferr := archiveFile.Close(); ferr != nil && err == nil {
-					err = ferr
-				}
-			}()
-
-			err = c.Upload(archiveFileInfo, archiveFile)
-			if err != nil {
-				fmt.Printf(
-					"%sFailed to archive object to s3://%s%s, %s\n",
-					command.LogErrorPrefix,
-					c.config.bucket,
-					c.config.s3Key,
-					err,
-				)
-				errors <- err
-				return
-			}
-
-			fmt.Printf(
-				"%sUploaded object to s3://%s%s\n",
-				command.LogSuccessPrefix,
-				c.config.bucket,
-				c.config.s3Key,
-			)
-
-			successes <- archiveFileInfo.Name()
-		}()
+		todo <- archiveFileInfo
 	}
 
-	remainingCount := len(archives)
+	fmt.Printf(
+		"%sStarting %d workers\n",
+		command.LogInfoPrefix,
+		c.config.maxNumWorkers,
+	)
+
+	var i uint
+	for i = 0; i < c.config.maxNumWorkers; i++ {
+		go func() {
+			for {
+				archiveFileInfo := <-todo
+				err := c.Upload(archiveFileInfo)
+				if err != nil {
+					errors <- err
+				} else {
+					successes <- archiveFileInfo.Name()
+				}
+			}
+		}();
+	}
 
 	for {
 		select {
@@ -288,7 +311,7 @@ func (c *archiveCommand) Run(args []string) int {
 	}
 
 	fmt.Printf(
-		"%sUploaded %d objects\n",
+		"%sUploaded %d object(s)\n",
 		command.LogSuccessPrefix,
 		len(archives),
 	)
